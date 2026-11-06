@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import type { FoundationState } from "./foundation";
 import { readFoundationStatus } from "./foundation";
+import { IdentitiesPage } from "../identities/IdentitiesPage";
 
 const messages = {
   loading: "Comprobando el almacenamiento local…",
-  ready: "Almacenamiento local disponible.",
   preview:
     "Abre GitPilot en una ventana de escritorio para comprobar el almacenamiento.",
 };
@@ -21,6 +21,8 @@ export function App() {
       active = false;
     };
   }, []);
+
+  if (state.kind === "ready") return <IdentitiesPage />;
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-14 sm:px-12">
