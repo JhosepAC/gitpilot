@@ -2,7 +2,7 @@
 
 ## Dirección de diseño
 
-Minimalista y moderna, con GitHub Desktop y GitHub Primer como referencias para navegación, listados de repositorios, estados y lectura de cambios. Usar el vocabulario de Git donde aporte precisión y acompañarlo con explicaciones al mostrar precedencia, origen o restauración. [GitHub Primer](https://primer.style/product/)
+Interfaz de trabajo minimalista con una escala de negros mate y naranja Git `#f5511e` para el foco, la marca y la acción principal. Usar el vocabulario de Git donde aporte precisión y acompañarlo con explicaciones al mostrar precedencia, origen o restauración. Los [tokens del rediseño](../../DESIGN.md) fijan los colores, la tipografía y la composición.
 
 - **`impeccable`** guía el modo Operate, la jerarquía, los flujos, la densidad y la revisión visual. Preparar wireframes y estados con datos ficticios antes de construir. Al implementar cada superficie, revisar el resultado renderizado en tamaños reales, ejecutar la auditoría aplicable y documentar las decisiones visuales como documentación de producto.
 - **`apple-design`** guía la respuesta inmediata, la consistencia espacial, la tipografía de sistema y el movimiento funcional. Mostrar cambios de estado en cuanto se recibe la interacción. Mantener las transiciones breves e interrumpibles y dar una alternativa con movimiento reducido. Reservar transparencias para capas que ayuden a distinguir superficies y ofrecer fondo sólido cuando lo requieran legibilidad o preferencias.
@@ -24,11 +24,13 @@ El flujo central es **Carpeta → Identidad → Vista previa → Aplicar → Ver
 
 Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de conflicto, vista previa vencida y recuperación.
 
-**Identidades.** Una lista lateral muestra los perfiles y la selección predeterminada. El panel principal presenta el nombre y el correo de Git, el uso en GitPilot y las acciones del perfil. En una ventana estrecha, la lista pasa encima del panel. Crear, editar e importar comparten un formulario. La importación empieza como borrador revisable y la eliminación se confirma en el panel. En la fase 2 el único uso activo es la preferencia predeterminada. La fase 3 añadirá asignaciones a directorios y repositorios.
+**Identidades.** Una lista lateral muestra los perfiles y la selección predeterminada. El panel principal reúne el nombre y correo en «Autor del commit», con el uso local y las acciones debajo. Crear, editar e importar comparten un formulario. La importación empieza como borrador revisable y la eliminación se confirma en el panel. En la fase 2 el único uso activo es la preferencia predeterminada. La fase 3 añadirá asignaciones a directorios y repositorios.
+
+**Ventana.** El área de trabajo es fija de 900 × 600 píxeles lógicos, con minimizar y cerrar mediante los controles nativos. La lista y el detalle se desplazan de forma independiente. El diseño reorganiza los paneles cuando el zoom reduce el espacio de contenido.
 
 ## Criterios visuales y de accesibilidad
 
-- Barra lateral con selección visible y panel de trabajo estable al cambiar de repositorio. En ventanas estrechas, plegar navegación y reducir columnas conservando acceso al detalle. Usar superficies neutras, un acento de acción/selección y estados semánticos con texto e icono.
+- Barra lateral con selección visible y panel de trabajo estable al cambiar de perfil. Cuando disminuye el ancho de contenido, apilar la lista y el detalle. Usar superficies neutras y estados semánticos con texto.
 - Jerarquía de tipografía de sistema con escala y espaciado consistentes. Usar monoespaciada para rutas, claves y comandos donde mejore la lectura. Las rutas truncadas conservan una forma accesible de consultar y copiar la ruta completa.
-- Temas claro, oscuro y del sistema. Aplicar los criterios WCAG 2.2 AA que correspondan a la interfaz, con foco visible, orden de tabulación, teclado completo, contraste, nombres accesibles, retorno de foco y anuncios de estados importantes. Verificar aumento de texto y preferencias de movimiento. [WCAG 2.2](https://www.w3.org/TR/WCAG22/)
-- Diseñar vacío, carga, error, resultado parcial, falta de permisos, conflicto y recuperación. Mostrar qué ocurrió y la acción disponible. Validar en ventana compacta, habitual y maximizada, con datos largos, navegación por teclado y los webviews de las plataformas objetivo.
+- Tema oscuro mate. Aplicar los criterios WCAG 2.2 AA que correspondan a la interfaz, con foco visible, orden de tabulación, teclado completo, contraste, nombres accesibles, retorno de foco y anuncios de estados importantes. Verificar aumento de texto y preferencias de movimiento. [WCAG 2.2](https://www.w3.org/TR/WCAG22/)
+- Diseñar vacío, carga, error, resultado parcial, falta de permisos, conflicto y recuperación. Mostrar qué ocurrió y la acción disponible. Validar la ventana fija y el reflujo con zoom, datos largos, navegación por teclado y los webviews de las plataformas objetivo.

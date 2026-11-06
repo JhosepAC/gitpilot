@@ -51,3 +51,9 @@ Prettier, ESLint, typecheck, cuatro pruebas de Vitest, formato de Rust, Clippy y
 - En Windows 11 x86_64 y Debian Bookworm x86_64 sobre WSL2 pasaron la compilación Tauri, los checks de formato y tipos, ESLint, Clippy, cuatro pruebas Vitest y siete pruebas Rust. Los casos Rust cubren validación, persistencia, duplicados con el mismo correo, revisiones obsoletas, predeterminado, protección de referencias y lectura global de Git.
 - En WebView2 se recorrieron creación, rechazo de un correo inválido, edición, duplicación, confirmación de eliminación, selección predeterminada, cancelación y confirmación de importación y reapertura. Se comprobó el diseño compacto a 390 px en modo oscuro.
 - En WebKitGTK se abrió la vista previa de Git, se guardó mediante teclado y se verificó el perfil en SQLite y tras reabrir. Los archivos de Git utilizados en las pruebas de interfaz fueron temporales y conservaron su contenido.
+
+## Evidencia del rediseño
+
+- En Windows se comprobó el área de 900 × 600 píxeles lógicos y el estilo nativo de ventana fija. En WebView2 se recorrieron creación, validación, edición, perfil predeterminado, duplicación, eliminación, importación y reapertura con datos aislados.
+- En Linux se comprobó la geometría de 900 × 600 con Openbox. La ventana conservó sus dimensiones al solicitar un tamaño mayor. En WebKitGTK se revisó y guardó la importación mediante teclado, con un archivo de Git temporal.
+- El inspector visual comprobó el reflujo a 768 y 390 px. La presentación de escritorio se revisó en capturas de la ventana nativa.
