@@ -16,8 +16,10 @@
         "title": "GitPilot",
         "width": 900,
         "height": 600,
-        "minWidth": 360,
-        "minHeight": 360
+        "resizable": false,
+        "maximizable": false,
+        "theme": "Dark",
+        "backgroundColor": "#101010"
       }
     ],
     "security": {
