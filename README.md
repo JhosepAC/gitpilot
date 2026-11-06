@@ -2,7 +2,7 @@
 
 GitPilot es una aplicación de escritorio local-first para gestionar identidades Git. El lanzamiento apunta a Windows y Linux x86_64. macOS queda como ampliación futura.
 
-La infraestructura abre una ventana de diagnóstico, aplica la primera migración de SQLite y consulta el estado del almacenamiento por IPC. Las identidades y los cambios de configuración de Git se incorporan en los hitos siguientes del [roadmap](docs/ROADMAP.md).
+La sección **Identidades** permite crear, editar, duplicar y eliminar perfiles locales, y elegir un predeterminado. **Importar desde Git** lee el nombre y el correo globales y abre un borrador para revisión antes de guardar. Las reglas por directorio y su aplicación a Git se incorporan en los siguientes hitos del [roadmap](docs/ROADMAP.md).
 
 ## Ejecutar en desarrollo
 
@@ -24,7 +24,7 @@ npm ci
 npm run tauri -- dev
 ```
 
-Cuando aparezca **Almacenamiento local disponible**, la ventana habrá recibido la confirmación de Rust. SQLite se guarda en el directorio local de datos de la aplicación, resuelto por Tauri. Los tests de Rust usan una ubicación temporal. Git `2.39.5` es el mínimo para las futuras funciones Git del MVP. [Evidencia de compatibilidad](docs/testing/PHASE_0.md)
+La pantalla **Identidades** se abre después de aplicar las migraciones y comprobar el almacenamiento. SQLite se guarda en el directorio local de datos de la aplicación, resuelto por Tauri. Los tests de Rust usan una ubicación temporal. Git `2.39.5` es el mínimo para las funciones Git del MVP. [Evidencia de compatibilidad](docs/testing/PHASE_0.md)
 
 ## Validar y compilar
 

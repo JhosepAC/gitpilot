@@ -24,6 +24,8 @@ El flujo central es **Carpeta → Identidad → Vista previa → Aplicar → Ver
 
 Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de conflicto, vista previa vencida y recuperación.
 
+**Identidades.** Una lista lateral muestra los perfiles y la selección predeterminada. El panel principal presenta el nombre y el correo de Git, el uso en GitPilot y las acciones del perfil. En una ventana estrecha, la lista pasa encima del panel. Crear, editar e importar comparten un formulario. La importación empieza como borrador revisable y la eliminación se confirma en el panel. En la fase 2 el único uso activo es la preferencia predeterminada. La fase 3 añadirá asignaciones a directorios y repositorios.
+
 ## Criterios visuales y de accesibilidad
 
 - Barra lateral con selección visible y panel de trabajo estable al cambiar de repositorio. En ventanas estrechas, plegar navegación y reducir columnas conservando acceso al detalle. Usar superficies neutras, un acento de acción/selección y estados semánticos con texto e icono.

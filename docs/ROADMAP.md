@@ -48,3 +48,7 @@ Fase cerrada con los [wireframes](ux/WIREFRAMES.md), los ADR y la [evidencia de 
 ## Estado de la fase 1
 
 Infraestructura implementada y verificada en Windows y Linux. La aplicación abre su ventana, aplica la primera migración y confirma el estado de SQLite mediante IPC. El [README](../README.md) documenta la ejecución y las [pruebas](testing/TESTING.md#evidencia-de-fase-1) registran la validación local. La fase 2 comienza con perfiles de identidad persistidos.
+
+## Estado de la fase 2
+
+La pantalla Identidades permite administrar perfiles persistidos, elegir un predeterminado e importar la identidad global de Git mediante un borrador revisable. Las [pruebas](testing/TESTING.md#evidencia-de-fase-2) registran la validación en Windows y Linux. La fase 3 incorpora directorios, repositorios y asignaciones de identidad.
