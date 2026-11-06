@@ -1,15 +1,72 @@
 @import "tailwindcss" source(none);
 @source "./";
 
-@theme inline {
-  --color-muted: var(--gitpilot-muted);
-  --color-divider: var(--gitpilot-divider);
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  --canvas: #101010;
+  --rail: #141414;
+  --surface: #191919;
+  --selected: #242424;
+  --line: #303030;
+  --control-line: #606060;
+  --selection-line: #767676;
+  --text: #f1f1f1;
+  --muted: #adadad;
+  --accent: #f5511e;
+  --accent-hover: #ff7045;
+  --danger: #ff9e94;
+  color: var(--text);
+  background: var(--canvas);
+  scrollbar-color: #555 var(--canvas);
+  accent-color: var(--accent);
 }
 
-:root {
-  color-scheme: light dark;
-  color: light-dark(#1f2328, #e6edf3);
-  background: light-dark(#ffffff, #0d1117);
-  --gitpilot-muted: light-dark(#505963, #a7b2bf);
-  --gitpilot-divider: light-dark(#d0d7de, #30363d);
+::selection {
+  color: var(--canvas);
+  background: var(--accent-hover);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 1.0625rem;
+  font-weight: 670;
+  letter-spacing: -0.02em;
+}
+
+.app-brand svg {
+  color: var(--accent);
+  flex: none;
+}
+
+.startup {
+  max-inline-size: 36rem;
+  padding: 2rem;
+}
+
+.startup-status {
+  margin-block-start: 2rem;
+  padding-block-start: 1.25rem;
+  border-block-start: 1px solid var(--line);
+}
+
+.startup-status h1 {
+  font-size: 1.25rem;
+  font-weight: 620;
+}
+
+.startup-status p {
+  margin-block-start: 0.4rem;
+  color: var(--muted);
+}
+
+.startup-status [role="alert"] {
+  color: var(--danger);
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { FoundationState } from "./foundation";
 import { readFoundationStatus } from "./foundation";
 import { IdentitiesPage } from "../identities/IdentitiesPage";
+import { Brand } from "./Brand";
 
 const messages = {
   loading: "Comprobando el almacenamiento local…",
@@ -25,17 +26,11 @@ export function App() {
   if (state.kind === "ready") return <IdentitiesPage />;
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-14 sm:px-12">
-      <h1 className="text-3xl font-semibold tracking-tight">GitPilot</h1>
-      <p className="mt-2 text-muted">Gestión de identidades Git</p>
-      <section
-        className="mt-10 border-t border-divider pt-5"
-        aria-labelledby="storage"
-      >
-        <h2 id="storage" className="font-medium">
-          Almacenamiento local
-        </h2>
-        <p className="mt-2 max-w-prose text-muted" role="status">
+    <main className="startup">
+      <Brand />
+      <section className="startup-status" aria-labelledby="storage">
+        <h1 id="storage">Almacenamiento local</h1>
+        <p role={state.kind === "error" ? "alert" : "status"}>
           {state.kind === "error" ? state.message : messages[state.kind]}
         </p>
       </section>
