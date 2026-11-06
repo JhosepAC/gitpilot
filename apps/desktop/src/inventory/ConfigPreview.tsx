@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import type { NativePreview } from "./inventoryApi";
+import { useEffect, useRef, useState } from "react";
+import type { NativeOperation, NativePreview } from "./inventoryApi";
 import { GitConfigFields } from "./RepositoryDiagnosis";
 
 const priorities = {
@@ -24,6 +24,10 @@ const findings: Record<string, string> = {
   unverified_repository:
     "Git no pudo comprobar este repositorio. Revisa su configuración y vuelve a escanear.",
   unverified_worktree: "Git no pudo comprobar todos los worktrees vinculados.",
+  managed_config_present:
+    "Ya hay una referencia administrada en el archivo global.",
+  unsafe_global:
+    "El archivo global o su carpeta requieren revisión antes de aplicar.",
 };
 
 const results = {
@@ -37,12 +41,19 @@ const results = {
 export function ConfigPreview({
   preview,
   onBack,
+  onConfirm,
+  busy,
 }: {
   preview: NativePreview;
   onBack: () => void;
+  onConfirm: (confirmation: string) => void;
+  busy: boolean;
 }) {
+  const [review, setReview] = useState(false);
   const title = useRef<HTMLHeadingElement>(null);
+  const reviewTitle = useRef<HTMLHeadingElement>(null);
   useEffect(() => title.current?.focus({ preventScroll: true }), []);
+  useEffect(() => reviewTitle.current?.focus(), [review]);
   const issues = preview.comparisons.filter(
     ({ result }) => result === "conflict" || result === "unexpected",
   );
@@ -52,7 +63,11 @@ export function ConfigPreview({
   ];
   return (
     <>
-      <button className="button inventory-back" onClick={onBack}>
+      <button
+        className="button inventory-back"
+        onClick={onBack}
+        disabled={busy}
+      >
         Volver al inventario
       </button>
       <h2 className="preview-title" tabIndex={-1} ref={title}>
@@ -92,6 +107,45 @@ export function ConfigPreview({
           )}
         </div>
       )}
+      {preview.confirmation &&
+        (review ? (
+          <div className="inventory-section">
+            <h3 ref={reviewTitle} tabIndex={-1}>
+              Confirmar aplicación
+            </h3>
+            <p>
+              GitPilot respaldará y verificará este archivo antes de activar las
+              reglas.
+            </p>
+            <p className="inventory-meta">{preview.globalPath}</p>
+            <div className="action-row preview-actions">
+              <button
+                className="button primary"
+                disabled={busy}
+                onClick={() =>
+                  preview.confirmation && onConfirm(preview.confirmation)
+                }
+              >
+                Confirmar y aplicar
+              </button>
+              <button
+                className="button"
+                disabled={busy}
+                onClick={() => setReview(false)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            className="button primary preview-actions"
+            onClick={() => setReview(true)}
+            disabled={busy}
+          >
+            Revisar aplicación
+          </button>
+        ))}
       <p className="inventory-meta preview-version">{preview.gitVersion}</p>
       {preview.findings.length > 0 && (
         <div className="inventory-section">
@@ -166,6 +220,56 @@ export function ConfigPreview({
           </details>
         ))}
       </div>
+    </>
+  );
+}
+
+export function NativeOperationPanel({
+  operation,
+  onBack,
+  onRestore,
+  busy,
+}: {
+  operation: NativeOperation;
+  onBack: () => void;
+  onRestore: (confirmation: string) => void;
+  busy: boolean;
+}) {
+  const title = useRef<HTMLHeadingElement>(null);
+  useEffect(() => title.current?.focus({ preventScroll: true }), []);
+  const pending = operation.state === "recovery_required";
+  return (
+    <>
+      <button
+        className="button inventory-back"
+        onClick={onBack}
+        disabled={busy}
+      >
+        Volver al inventario
+      </button>
+      <h2 className="preview-title" ref={title} tabIndex={-1}>
+        {pending ? "Recuperación pendiente" : "Configuración verificada"}
+      </h2>
+      <p className="panel-intro">
+        {pending
+          ? "GitPilot conservó el registro y el respaldo. Comprueba si el archivo cambió fuera de GitPilot antes de recuperar."
+          : "La restauración devuelve el archivo global a su estado anterior a esta operación."}
+      </p>
+      <div className="commit-author preview-destinations">
+        <h3>Configuración global</h3>
+        <p>{operation.target}</p>
+      </div>
+      {operation.confirmation && (
+        <button
+          className="button danger preview-actions"
+          disabled={busy}
+          onClick={() =>
+            operation.confirmation && onRestore(operation.confirmation)
+          }
+        >
+          Confirmar restauración
+        </button>
+      )}
     </>
   );
 }

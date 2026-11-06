@@ -28,6 +28,7 @@ export type ObservedFields = {
 };
 
 export type NativePreview = {
+  confirmation: string | null;
   gitVersion: string;
   globalPath: string | null;
   globalAppend: string | null;
@@ -48,6 +49,11 @@ export type NativePreview = {
       "matches" | "conflict" | "unexpected" | "diagnostic_only" | "unchanged";
   }[];
   findings: { code: string; path: string | null }[];
+};
+export type NativeOperation = {
+  state: "applied" | "recovery_required";
+  target: string;
+  confirmation: string | null;
 };
 export type Diagnosis = {
   expected: {
@@ -72,6 +78,9 @@ type ScanReport = { found: number; skipped: number; partial: boolean };
 
 export const inventoryApi = {
   preview: () => invoke<NativePreview>("preview_native_config"),
+  nativeStatus: () => invoke<NativeOperation | null>("native_config_status"),
+  confirmNative: (confirmation: string, restore: boolean) =>
+    invoke<void>("confirm_native_config", { confirmation, restore }),
   add: (path: string) => invoke<number>("add_directory", { path }),
   remove: ({ id, revision }: Directory) =>
     invoke<void>("remove_directory", { id, revision }),
@@ -115,6 +124,18 @@ export async function loadInventory(
 
 export function inventoryError(error: unknown) {
   switch (error) {
+    case "stale_preview":
+      return "La vista previa venció. Vuelve al inventario y ábrela de nuevo.";
+    case "busy":
+      return "Git u otra instancia mantiene un bloqueo. Espera y vuelve a intentarlo.";
+    case "unsafe_target":
+      return "GitPilot no pudo comprobar el destino de forma segura.";
+    case "backup_unavailable":
+      return "El respaldo cifrado no está disponible. Comprueba el almacén de secretos del sistema.";
+    case "verification_failed":
+      return "Git no confirmó el resultado. GitPilot restauró el estado previo.";
+    case "recovery_required":
+      return "GitPilot detuvo la operación y conservó el respaldo. Revisa el estado antes de continuar.";
     case "invalid_path":
       return "Comprueba que la ruta sea absoluta, exista y sea accesible.";
     case "outside_directory":

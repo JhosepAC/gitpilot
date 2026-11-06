@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Brand } from "../app/Brand";
 import { WorkspaceNav } from "../app/WorkspaceNav";
-import { ConfigPreview } from "./ConfigPreview";
+import { ConfigPreview, NativeOperationPanel } from "./ConfigPreview";
 import { RepositoryDiagnosis } from "./RepositoryDiagnosis";
 import {
   folderName,
@@ -10,7 +10,12 @@ import {
   inventoryError,
   loadInventory,
 } from "./inventoryApi";
-import type { Directory, NativePreview, Repository } from "./inventoryApi";
+import type {
+  Directory,
+  NativeOperation,
+  NativePreview,
+  Repository,
+} from "./inventoryApi";
 import "./inventory.css";
 
 const kinds = {
@@ -31,13 +36,15 @@ export function InventoryPage({
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"add" | "exclude" | "remove" | null>(null);
   const [preview, setPreview] = useState<NativePreview>();
+  const [nativeOperation, setNativeOperation] = useState<NativeOperation>();
   const [path, setPath] = useState("");
   const panel = useRef<HTMLElement>(null);
   const pathInput = useRef<HTMLInputElement>(null);
   const previewButton = useRef<HTMLButtonElement>(null);
   const directory = view?.directory;
   const repository = view?.repository;
-  const locked = Boolean(busy || mode || preview);
+  const configOpen = Boolean(preview || nativeOperation);
+  const locked = Boolean(busy || mode || configOpen);
 
   useEffect(() => {
     let mounted = true;
@@ -56,7 +63,7 @@ export function InventoryPage({
 
   useEffect(() => {
     panel.current?.scrollTo({ top: 0 });
-  }, [directory?.id, repository?.id, mode, preview]);
+  }, [directory?.id, repository?.id, mode, configOpen]);
 
   useEffect(() => {
     pathInput.current?.focus();
@@ -77,6 +84,47 @@ export function InventoryPage({
 
   async function refresh(directoryId = directory?.id, repositoryId?: number) {
     setView(await loadInventory(directoryId, repositoryId));
+  }
+
+  function closeConfig() {
+    setPreview(undefined);
+    setNativeOperation(undefined);
+    requestAnimationFrame(() => previewButton.current?.focus());
+  }
+
+  async function openConfig() {
+    const operation = await inventoryApi.nativeStatus();
+    if (operation) setNativeOperation(operation);
+    else setPreview(await inventoryApi.preview());
+  }
+
+  function confirmConfig(confirmation: string, restore: boolean) {
+    void run(
+      restore ? "Restaurando configuración…" : "Aplicando y verificando…",
+      async () => {
+        try {
+          await inventoryApi.confirmNative(confirmation, restore);
+        } catch (problem) {
+          const state = await inventoryApi.nativeStatus().catch(() => null);
+          if (state) {
+            setNativeOperation(state);
+            setPreview(undefined);
+          } else if (problem === "stale_preview") {
+            closeConfig();
+          }
+          throw problem;
+        }
+        if (restore) {
+          closeConfig();
+          setNotice("Configuración anterior restaurada y verificada.");
+        } else {
+          setPreview(undefined);
+          setNativeOperation((await inventoryApi.nativeStatus()) ?? undefined);
+          setNotice("Configuración aplicada y verificada con Git.");
+        }
+        await refresh(directory?.id, repository?.id);
+      },
+    );
   }
 
   function openPathForm(action: "add" | "exclude") {
@@ -165,16 +213,12 @@ export function InventoryPage({
           <p>Repositorios y reglas de identidad locales.</p>
         </div>
         <div className="action-row">
-          {directory && !mode && !preview && (
+          {view && !mode && !configOpen && (
             <button
               className="button"
               ref={previewButton}
               disabled={locked}
-              onClick={() =>
-                void run("Simulando configuración…", async () => {
-                  setPreview(await inventoryApi.preview());
-                })
-              }
+              onClick={() => void run("Consultando configuración…", openConfig)}
             >
               Vista previa de Git
             </button>
@@ -192,7 +236,7 @@ export function InventoryPage({
               Actualizar vista
             </button>
           )}
-          {view && !mode && !preview && (
+          {view && !mode && !configOpen && (
             <button
               className={directory ? "button" : "button primary"}
               disabled={locked}
@@ -249,13 +293,19 @@ export function InventoryPage({
           <div role="status">{busy || notice}</div>
           {error && <p role="alert">{error}</p>}
         </div>
-        {preview ? (
+        {nativeOperation ? (
+          <NativeOperationPanel
+            operation={nativeOperation}
+            busy={Boolean(busy)}
+            onBack={closeConfig}
+            onRestore={(confirmation) => confirmConfig(confirmation, true)}
+          />
+        ) : preview ? (
           <ConfigPreview
             preview={preview}
-            onBack={() => {
-              setPreview(undefined);
-              requestAnimationFrame(() => previewButton.current?.focus());
-            }}
+            busy={Boolean(busy)}
+            onBack={closeConfig}
+            onConfirm={(confirmation) => confirmConfig(confirmation, false)}
           />
         ) : mode === "add" || mode === "exclude" ? (
           <>
