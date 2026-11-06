@@ -229,11 +229,13 @@ export function NativeOperationPanel({
   onBack,
   onRestore,
   busy,
+  backLabel = "Volver al inventario",
 }: {
   operation: NativeOperation;
   onBack: () => void;
   onRestore: (confirmation: string) => void;
   busy: boolean;
+  backLabel?: string;
 }) {
   const title = useRef<HTMLHeadingElement>(null);
   useEffect(() => title.current?.focus({ preventScroll: true }), []);
@@ -245,18 +247,22 @@ export function NativeOperationPanel({
         onClick={onBack}
         disabled={busy}
       >
-        Volver al inventario
+        {backLabel}
       </button>
       <h2 className="preview-title" ref={title} tabIndex={-1}>
         {pending ? "Recuperación pendiente" : "Configuración verificada"}
       </h2>
       <p className="panel-intro">
         {pending
-          ? "GitPilot conservó el registro y el respaldo. Comprueba si el archivo cambió fuera de GitPilot antes de recuperar."
-          : "La restauración devuelve el archivo global a su estado anterior a esta operación."}
+          ? "GitPilot conservó el registro y el respaldo. Revisa el archivo y libera cualquier bloqueo de Git. Puedes reabrir GitPilot para reintentar una operación interrumpida."
+          : "La restauración devuelve el archivo a su estado anterior a esta operación."}
       </p>
       <div className="commit-author preview-destinations">
-        <h3>Configuración global</h3>
+        <h3>
+          {operation.local
+            ? "Configuración del repositorio"
+            : "Configuración global"}
+        </h3>
         <p>{operation.target}</p>
       </div>
       {operation.confirmation && (

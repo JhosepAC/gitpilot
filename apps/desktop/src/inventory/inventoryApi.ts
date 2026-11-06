@@ -51,9 +51,26 @@ export type NativePreview = {
   findings: { code: string; path: string | null }[];
 };
 export type NativeOperation = {
+  id: number;
+  local: boolean;
   state: "applied" | "recovery_required";
   target: string;
   confirmation: string | null;
+};
+export type LocalPreview = {
+  target: string;
+  confirmation: string;
+  append: string;
+  name: string;
+  email: string;
+};
+export type ActivityItem = {
+  id: number;
+  target: string;
+  state:
+    "preparing" | "applied" | "restoring" | "restored" | "rolled_back" | "kept";
+  scope: "local" | "global";
+  at: string;
 };
 export type Diagnosis = {
   expected: {
@@ -71,6 +88,8 @@ export type Diagnosis = {
     | null;
   observationError: string | null;
   conflict: boolean;
+  conflictFingerprint: string | null;
+  kept: boolean;
 };
 
 type Contents = { exclusions: string[]; repositories: Repository[] };
@@ -78,9 +97,23 @@ type ScanReport = { found: number; skipped: number; partial: boolean };
 
 export const inventoryApi = {
   preview: () => invoke<NativePreview>("preview_native_config"),
-  nativeStatus: () => invoke<NativeOperation | null>("native_config_status"),
-  confirmNative: (confirmation: string, restore: boolean) =>
-    invoke<void>("confirm_native_config", { confirmation, restore }),
+  nativeStatus: (operationId?: number) =>
+    invoke<NativeOperation | null>("native_config_status", { operationId }),
+  confirmNative: (
+    confirmation: string,
+    restore: boolean,
+    context?: { repositoryId?: number; operationId?: number },
+  ) =>
+    invoke<void>("confirm_native_config", {
+      confirmation,
+      restore,
+      ...context,
+    }),
+  activity: () => invoke<ActivityItem[]>("native_activity"),
+  previewLocal: (id: number) =>
+    invoke<LocalPreview>("preview_local_identity", { id }),
+  keep: (id: number, fingerprint: string) =>
+    invoke<void>("keep_repository_identity", { id, fingerprint }),
   add: (path: string) => invoke<number>("add_directory", { path }),
   remove: ({ id, revision }: Directory) =>
     invoke<void>("remove_directory", { id, revision }),
@@ -128,6 +161,8 @@ export function inventoryError(error: unknown) {
       return "La vista previa venció. Vuelve al inventario y ábrela de nuevo.";
     case "busy":
       return "Git u otra instancia mantiene un bloqueo. Espera y vuelve a intentarlo.";
+    case "active_operation":
+      return "Ya hay una aplicación activa para este destino. Puedes revisarla y restaurarla desde Actividad.";
     case "unsafe_target":
       return "GitPilot no pudo comprobar el destino de forma segura.";
     case "backup_unavailable":

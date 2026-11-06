@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Brand } from "../app/Brand";
 import { WorkspaceNav } from "../app/WorkspaceNav";
+import type { Workspace } from "../app/WorkspaceNav";
 import { ConfigPreview, NativeOperationPanel } from "./ConfigPreview";
 import { RepositoryDiagnosis } from "./RepositoryDiagnosis";
 import {
@@ -12,6 +13,7 @@ import {
 } from "./inventoryApi";
 import type {
   Directory,
+  LocalPreview,
   NativeOperation,
   NativePreview,
   Repository,
@@ -28,7 +30,7 @@ const kinds = {
 export function InventoryPage({
   onNavigate,
 }: {
-  onNavigate: (workspace: "identities" | "directories") => void;
+  onNavigate: (workspace: Workspace) => void;
 }) {
   const [view, setView] = useState<Awaited<ReturnType<typeof loadInventory>>>();
   const [busy, setBusy] = useState("");
@@ -37,13 +39,16 @@ export function InventoryPage({
   const [mode, setMode] = useState<"add" | "exclude" | "remove" | null>(null);
   const [preview, setPreview] = useState<NativePreview>();
   const [nativeOperation, setNativeOperation] = useState<NativeOperation>();
+  const [localPreview, setLocalPreview] = useState<LocalPreview>();
   const [path, setPath] = useState("");
   const panel = useRef<HTMLElement>(null);
   const pathInput = useRef<HTMLInputElement>(null);
+  const localReviewTitle = useRef<HTMLHeadingElement>(null);
+  const localReviewButton = useRef<HTMLButtonElement>(null);
   const previewButton = useRef<HTMLButtonElement>(null);
   const directory = view?.directory;
   const repository = view?.repository;
-  const configOpen = Boolean(preview || nativeOperation);
+  const configOpen = Boolean(preview || nativeOperation || localPreview);
   const locked = Boolean(busy || mode || configOpen);
 
   useEffect(() => {
@@ -68,6 +73,10 @@ export function InventoryPage({
   useEffect(() => {
     pathInput.current?.focus();
   }, [mode]);
+
+  useEffect(() => {
+    if (localPreview) localReviewTitle.current?.focus({ preventScroll: true });
+  }, [localPreview]);
 
   async function run(message: string, operation: () => Promise<void>) {
     setBusy(message);
@@ -125,6 +134,23 @@ export function InventoryPage({
         await refresh(directory?.id, repository?.id);
       },
     );
+  }
+
+  function confirmLocal() {
+    if (!localPreview || !repository) return;
+    void run("Aplicando la identidad local…", async () => {
+      try {
+        await inventoryApi.confirmNative(localPreview.confirmation, false, {
+          repositoryId: repository.id,
+        });
+        setNotice(
+          "Identidad local verificada. Puedes restaurarla desde Actividad.",
+        );
+        await refresh(directory?.id, repository.id);
+      } finally {
+        setLocalPreview(undefined);
+      }
+    });
   }
 
   function openPathForm(action: "add" | "exclude") {
@@ -293,7 +319,40 @@ export function InventoryPage({
           <div role="status">{busy || notice}</div>
           {error && <p role="alert">{error}</p>}
         </div>
-        {nativeOperation ? (
+        {localPreview ? (
+          <>
+            <button
+              className="button inventory-back"
+              disabled={Boolean(busy)}
+              onClick={() => {
+                setLocalPreview(undefined);
+                requestAnimationFrame(() => localReviewButton.current?.focus());
+              }}
+            >
+              Volver al repositorio
+            </button>
+            <h2 className="preview-title" tabIndex={-1} ref={localReviewTitle}>
+              Confirmar identidad local
+            </h2>
+            <p className="panel-intro">
+              GitPilot respaldará este archivo antes de añadir los valores
+              indicados. Después verificará la configuración, el autor y el
+              committer.
+            </p>
+            <div className="commit-author preview-destinations">
+              <h3>Archivo del repositorio</h3>
+              <p>{localPreview.target}</p>
+              <pre className="preview-diff">{localPreview.append}</pre>
+            </div>
+            <button
+              className="button primary preview-actions"
+              disabled={Boolean(busy)}
+              onClick={confirmLocal}
+            >
+              Confirmar cambio local
+            </button>
+          </>
+        ) : nativeOperation ? (
           <NativeOperationPanel
             operation={nativeOperation}
             busy={Boolean(busy)}
@@ -394,6 +453,47 @@ export function InventoryPage({
             </p>
             {identitySelect(repository, "Excepción de identidad")}
             <RepositoryDiagnosis diagnosis={view.diagnosis} />
+            {view.diagnosis.conflictFingerprint && (
+              <div className="action-row preview-actions">
+                {!view.diagnosis.kept && (
+                  <button
+                    className="button"
+                    disabled={locked}
+                    onClick={() => {
+                      const fingerprint = view.diagnosis?.conflictFingerprint;
+                      if (fingerprint)
+                        void run("Registrando decisión…", async () => {
+                          await inventoryApi.keep(repository.id, fingerprint);
+                          await refresh(directory?.id, repository.id);
+                          setNotice("Configuración actual conservada.");
+                        });
+                    }}
+                  >
+                    Conservar configuración actual
+                  </button>
+                )}
+                {repository.kind === "ordinary" &&
+                  [
+                    view.diagnosis.observed?.name,
+                    view.diagnosis.observed?.email,
+                  ].some((field) => field?.scope === "local") && (
+                    <button
+                      className="button"
+                      ref={localReviewButton}
+                      disabled={locked}
+                      onClick={() =>
+                        void run("Comprobando el archivo local…", async () =>
+                          setLocalPreview(
+                            await inventoryApi.previewLocal(repository.id),
+                          ),
+                        )
+                      }
+                    >
+                      Revisar cambio local
+                    </button>
+                  )}
+              </div>
+            )}
             <details className="inventory-disclosure">
               <summary>Rutas de Git</summary>
               <dl className="observed-identity">

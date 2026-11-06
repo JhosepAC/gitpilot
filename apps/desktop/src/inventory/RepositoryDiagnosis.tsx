@@ -38,7 +38,9 @@ export function RepositoryDiagnosis({ diagnosis }: { diagnosis: Diagnosis }) {
     <>
       {conflict && (
         <p className="inventory-conflict" role="status">
-          La identidad esperada difiere de la configuración de Git.
+          {diagnosis.kept
+            ? "Configuración actual conservada para esta discrepancia."
+            : "La identidad esperada difiere de la configuración de Git."}
         </p>
       )}
       <div className="commit-author inventory-diagnosis">

@@ -1,4 +1,11 @@
-type Workspace = "identities" | "directories";
+export type Workspace = "setup" | "identities" | "directories" | "activity";
+
+const sections: Record<Workspace, string> = {
+  setup: "Inicio",
+  identities: "Identidades",
+  directories: "Directorios",
+  activity: "Actividad",
+};
 
 export function WorkspaceNav({
   current,
@@ -11,22 +18,17 @@ export function WorkspaceNav({
 }) {
   return (
     <nav className="workspace-nav" aria-label="Secciones de GitPilot">
-      <button
-        type="button"
-        aria-current={current === "identities" ? "page" : undefined}
-        disabled={disabled}
-        onClick={() => onNavigate("identities")}
-      >
-        Identidades
-      </button>
-      <button
-        type="button"
-        aria-current={current === "directories" ? "page" : undefined}
-        disabled={disabled}
-        onClick={() => onNavigate("directories")}
-      >
-        Directorios
-      </button>
+      {(Object.keys(sections) as Workspace[]).map((section) => (
+        <button
+          key={section}
+          type="button"
+          aria-current={current === section ? "page" : undefined}
+          disabled={disabled}
+          onClick={() => onNavigate(section)}
+        >
+          {sections[section]}
+        </button>
+      ))}
     </nav>
   );
 }

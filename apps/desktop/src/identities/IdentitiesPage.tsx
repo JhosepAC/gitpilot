@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Brand } from "../app/Brand";
 import { WorkspaceNav } from "../app/WorkspaceNav";
+import type { Workspace } from "../app/WorkspaceNav";
 import { IdentityEditor } from "./IdentityEditor";
 import { identityApi, identityError } from "./identityApi";
 import type { Identity, IdentityInput } from "./identityApi";
@@ -21,7 +22,7 @@ const emptyInput = { label: "", gitName: "", email: "" };
 export function IdentitiesPage({
   onNavigate,
 }: {
-  onNavigate: (workspace: "identities" | "directories") => void;
+  onNavigate: (workspace: Workspace) => void;
 }) {
   const [profiles, setProfiles] = useState<Identity[] | null>(null);
   const [pane, setPane] = useState<Pane>({ kind: "detail" });
