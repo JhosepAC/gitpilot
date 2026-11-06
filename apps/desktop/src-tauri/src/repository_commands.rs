@@ -4,9 +4,43 @@ use tauri::State;
 use crate::{
     application::Foundation,
     error::StorageError,
-    infrastructure::{config_preview, discovery, inventory},
+    infrastructure::{config_apply, config_preview, discovery, inventory},
     repository::{Directory, DirectoryInventory, IdentityDiagnosis, InventoryError, ScanReport},
 };
+
+#[tauri::command]
+pub(crate) async fn native_config_status(
+    foundation: State<'_, Foundation>,
+) -> Result<Option<config_apply::OperationStatus>, config_apply::ApplyError> {
+    let pool = foundation
+        .database()
+        .map_err(|_| config_apply::ApplyError::StorageUnavailable)?;
+    config_apply::status(pool).await
+}
+
+#[tauri::command]
+pub(crate) async fn confirm_native_config(
+    foundation: State<'_, Foundation>,
+    confirmation: String,
+    restore: bool,
+) -> Result<(), config_apply::ApplyError> {
+    let _guard = foundation
+        .inventory_scan
+        .try_lock()
+        .map_err(|_| config_apply::ApplyError::Busy)?;
+    let pool = foundation
+        .database()
+        .map_err(|_| config_apply::ApplyError::StorageUnavailable)?;
+    let app = foundation
+        .directory
+        .as_deref()
+        .ok_or(config_apply::ApplyError::StorageUnavailable)?;
+    if restore {
+        config_apply::restore(pool, app, &confirmation).await
+    } else {
+        config_apply::apply(pool, app, &confirmation).await
+    }
+}
 
 #[tauri::command]
 pub(crate) async fn preview_native_config(

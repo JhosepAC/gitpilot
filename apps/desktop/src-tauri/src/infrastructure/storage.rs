@@ -2,7 +2,7 @@ use std::{path::Path, time::Duration};
 
 use sqlx::{
     migrate::Migrator,
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteSynchronous},
     SqlitePool,
 };
 
@@ -16,6 +16,7 @@ pub(crate) async fn open(directory: &Path) -> Result<SqlitePool, StorageError> {
     let options = SqliteConnectOptions::new()
         .filename(directory.join("gitpilot.sqlite3"))
         .create_if_missing(true)
+        .synchronous(SqliteSynchronous::Full)
         .foreign_keys(true)
         .busy_timeout(Duration::from_secs(3));
     let pool = SqlitePoolOptions::new()

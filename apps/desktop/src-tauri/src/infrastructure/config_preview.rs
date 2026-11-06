@@ -11,7 +11,7 @@ use tokio::fs;
 
 use crate::repository::{InventoryError, ObservedIdentity, Repository};
 
-use super::{discovery, git};
+use super::{discovery, git, native_file};
 
 const PREVIEW_LIMIT: usize = 80;
 const GIT_TIME: Duration = Duration::from_secs(2);
@@ -28,6 +28,7 @@ struct Profile {
 
 #[derive(sqlx::FromRow)]
 struct Root {
+    revision: i64,
     path: String,
     scan_partial: Option<bool>,
     identity_id: Option<i64>,
@@ -76,6 +77,20 @@ pub(crate) struct ConfigPreview {
     rules: Vec<Rule>,
     comparisons: Vec<Comparison>,
     findings: Vec<Finding>,
+    confirmation: Option<String>,
+    #[serde(skip)]
+    pub(super) candidate: Option<Candidate>,
+}
+
+pub(super) const MANAGED: &str = "# GitPilot managed identity configuration";
+
+pub(super) struct Candidate {
+    pub(super) target: PathBuf,
+    pub(super) parent: [u64; 2],
+    pub(super) before: Option<native_file::Stamp>,
+    pub(super) generation: PathBuf,
+    pub(super) files: BTreeMap<String, Vec<u8>>,
+    pub(super) append: String,
 }
 
 impl ConfigPreview {
@@ -90,7 +105,7 @@ impl ConfigPreview {
 async fn snapshot(pool: &SqlitePool) -> Result<Policy, InventoryError> {
     let mut tx = pool.begin().await?;
     let roots = sqlx::query_as(
-        "SELECT d.path, d.scan_partial, r.identity_id FROM directories d
+        "SELECT d.path, d.revision, d.scan_partial, r.identity_id FROM directories d
          LEFT JOIN identity_rules r ON r.directory_id = d.id ORDER BY d.path",
     )
     .fetch_all(&mut *tx)
@@ -249,6 +264,24 @@ fn profile_config(profile: &Profile) -> String {
     )
 }
 
+fn generated_files(rules: &[Rule]) -> BTreeMap<String, Vec<u8>> {
+    let mut files = BTreeMap::new();
+    let mut manifest = String::new();
+    for rule in rules {
+        let filename = profile_filename(&rule.profile);
+        files
+            .entry(filename.clone())
+            .or_insert_with(|| profile_config(&rule.profile).into_bytes());
+        manifest.push_str(&format!(
+            "[includeIf {}]\n\tpath = {}\n",
+            quote(&rule.pattern),
+            quote(&filename)
+        ));
+    }
+    files.insert("active.config".into(), manifest.into_bytes());
+    files
+}
+
 async fn git_line(executable: &Path, cwd: &Path, args: &[&str]) -> Option<String> {
     let mut command = git::command(executable, cwd);
     let (status, bytes) = git::output(command.args(args), GIT_TIME).await.ok()?;
@@ -312,17 +345,10 @@ async fn simulation(
     files: &GlobalFiles,
     scratch: &Path,
 ) -> Result<PathBuf, InventoryError> {
-    let mut manifest = String::new();
-    for rule in rules {
-        let filename = profile_filename(&rule.profile);
-        fs::write(scratch.join(&filename), profile_config(&rule.profile))
+    for (filename, bytes) in generated_files(rules) {
+        fs::write(scratch.join(filename), bytes)
             .await
             .map_err(|_| InventoryError::StorageUnavailable)?;
-        manifest.push_str(&format!(
-            "[includeIf {}]\n\tpath = {}\n",
-            quote(&rule.pattern),
-            quote(&filename)
-        ));
     }
     let mut global = String::new();
     for path in &files.existing {
@@ -332,9 +358,6 @@ async fn simulation(
     }
     global.push_str(&include("active.config"));
     let path = scratch.join("global.config");
-    fs::write(scratch.join("active.config"), manifest)
-        .await
-        .map_err(|_| InventoryError::StorageUnavailable)?;
     fs::write(&path, global)
         .await
         .map_err(|_| InventoryError::StorageUnavailable)?;
@@ -441,17 +464,17 @@ pub(crate) async fn prepare(
         preview.warn("unsupported_git", None);
         return Ok(preview);
     }
-    if [
-        "GIT_CONFIG_GLOBAL",
-        "GIT_CONFIG",
-        "GIT_CONFIG_COUNT",
-        "GIT_CONFIG_PARAMETERS",
-        "GIT_DIR",
-        "GIT_COMMON_DIR",
-        "GIT_WORK_TREE",
-    ]
-    .iter()
-    .any(|name| env::var_os(name).is_some_and(|value| !value.is_empty()))
+    if env::var_os("GIT_CONFIG_GLOBAL").is_some()
+        || [
+            "GIT_CONFIG",
+            "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_PARAMETERS",
+            "GIT_DIR",
+            "GIT_COMMON_DIR",
+            "GIT_WORK_TREE",
+        ]
+        .iter()
+        .any(|name| env::var_os(name).is_some_and(|value| !value.is_empty()))
     {
         preview.warn("redirected_config", None);
         return Ok(preview);
@@ -494,7 +517,27 @@ pub(crate) async fn prepare(
     if preview.rules.is_empty() {
         return Ok(preview);
     }
-    preview.global_append = git_path(&native.join("active.config")).map(|path| include(&path));
+    let generated = generated_files(&preview.rules);
+    let generation_hash = native_file::digest(
+        &serde_json::to_vec(&generated).map_err(|_| InventoryError::StorageUnavailable)?,
+    );
+    let generation = native.join(hex::encode(generation_hash));
+    let manifest = generation.join("active.config");
+    let Some(manifest_text) = git_path(&manifest) else {
+        preview.warn("unknown_global", None);
+        return Ok(preview);
+    };
+    preview.manifest_path = manifest.to_string_lossy().into_owned();
+    for rule in &mut preview.rules {
+        rule.profile_path = generation
+            .join(profile_filename(&rule.profile))
+            .to_string_lossy()
+            .into_owned();
+    }
+    let append = format!("{MANAGED}\n{}", include(&manifest_text));
+    preview.global_append = Some(append.clone());
+    let external = native_file::parent_id(&files.destination)
+        .and_then(|id| native_file::snapshot(&files.destination).map(|snapshot| (id, snapshot)));
     let scratch = tempfile::Builder::new()
         .prefix("native-preview-")
         .tempdir_in(app_data)
@@ -584,7 +627,95 @@ pub(crate) async fn prepare(
             .into_iter()
             .map(|(code, path)| Finding { code, path }),
     );
+    if let Ok((parent, before)) = external {
+        if before.as_ref().is_some_and(|snapshot| {
+            snapshot
+                .bytes
+                .windows(MANAGED.len())
+                .any(|window| window == MANAGED.as_bytes())
+        }) {
+            preview.warn("managed_config_present", None);
+        } else if native_file::parent_id(&native).is_err() {
+            preview.warn("unsafe_global", None);
+        } else if preview.findings.is_empty()
+            && !preview.comparisons.is_empty()
+            && !preview
+                .comparisons
+                .iter()
+                .any(|item| item.result == "unexpected")
+        {
+            let before = before.map(|snapshot| snapshot.stamp);
+            let roots: Vec<_> = policy
+                .roots
+                .iter()
+                .map(|root| (&root.path, root.revision))
+                .collect();
+            let repositories: Vec<_> = policy
+                .repositories
+                .iter()
+                .map(|repo| (repo.id, repo.revision))
+                .collect();
+            let material = serde_json::to_vec(&(&preview, parent, &before, roots, repositories))
+                .map_err(|_| InventoryError::StorageUnavailable)?;
+            preview.confirmation = Some(hex::encode(native_file::digest(&material)));
+            preview.candidate = Some(Candidate {
+                target: files.destination,
+                parent,
+                before,
+                generation,
+                files: generated,
+                append,
+            });
+        }
+    } else {
+        preview.warn("unsafe_global", None);
+    }
     Ok(preview)
+}
+
+impl ConfigPreview {
+    pub(super) fn confirmation(&self) -> Option<&str> {
+        self.confirmation.as_deref()
+    }
+
+    pub(super) async fn verify(&self) -> Result<(), InventoryError> {
+        let executable = git::executable().ok_or(InventoryError::GitUnavailable)?;
+        tokio::time::timeout(Duration::from_secs(15), async {
+            for item in &self.comparisons {
+                let observed =
+                    discovery::read_config(&executable, Path::new(&item.path), None).await?;
+                if !same_value(observed.name.as_ref(), item.proposed.name.as_ref())
+                    || !same_value(observed.email.as_ref(), item.proposed.email.as_ref())
+                {
+                    return Err(InventoryError::GitReadFailed);
+                }
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|_| InventoryError::GitReadFailed)?
+    }
+}
+
+fn same_value(
+    actual: Option<&crate::repository::ConfigValue>,
+    expected: Option<&crate::repository::ConfigValue>,
+) -> bool {
+    match (actual, expected) {
+        (Some(actual), Some(expected)) => {
+            let normalize = |origin: &str| {
+                origin
+                    .strip_prefix("file:")
+                    .and_then(|file| git_path(Path::new(file)))
+                    .map_or_else(|| origin.to_owned(), |file| format!("file:{file}"))
+            };
+            actual.value == expected.value
+                && actual.scope == expected.scope
+                && normalize(&actual.origin) == normalize(&expected.origin)
+        }
+        (None, None) => true,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -645,6 +776,7 @@ mod tests {
                 roots: [(&parent, Some(1)), (&child, None), (&fallback, None)]
                     .map(|(path, identity_id)| Root {
                         path: path_text(path),
+                        revision: 1,
                         identity_id,
                         scan_partial: Some(false),
                     })

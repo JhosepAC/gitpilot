@@ -21,6 +21,17 @@ pub fn run() -> tauri::Result<()> {
             let directory = app.path().app_local_data_dir().ok();
             let foundation =
                 tauri::async_runtime::block_on(application::Foundation::initialize(directory));
+            if let (Ok(pool), Some(directory)) = (foundation.database(), &foundation.directory) {
+                let pool = pool.clone();
+                let directory = directory.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) =
+                        infrastructure::config_apply::reconcile(&pool, &directory).await
+                    {
+                        tracing::warn!(?error, "native configuration reconciliation pending");
+                    }
+                });
+            }
             app.manage(foundation);
             Ok(())
         })
@@ -42,6 +53,8 @@ pub fn run() -> tauri::Result<()> {
             repository_commands::set_inventory_identity,
             repository_commands::diagnose_repository,
             repository_commands::preview_native_config,
+            repository_commands::native_config_status,
+            repository_commands::confirm_native_config,
         ])
         .run(tauri::generate_context!())
 }
