@@ -21,6 +21,34 @@ export type Repository = {
 };
 
 type ConfigValue = { value: string; scope: string; origin: string };
+
+export type ObservedFields = {
+  name: ConfigValue | null;
+  email: ConfigValue | null;
+};
+
+export type NativePreview = {
+  gitVersion: string;
+  globalPath: string | null;
+  globalAppend: string | null;
+  manifestPath: string;
+  rules: {
+    path: string;
+    source: "directory" | "default" | "repository";
+    pattern: string;
+    profilePath: string;
+    profile: { label: string; gitName: string; email: string };
+  }[];
+  comparisons: {
+    path: string;
+    expected: string | null;
+    current: ObservedFields;
+    proposed: ObservedFields;
+    result:
+      "matches" | "conflict" | "unexpected" | "diagnostic_only" | "unchanged";
+  }[];
+  findings: { code: string; path: string | null }[];
+};
 export type Diagnosis = {
   expected: {
     label: string;
@@ -29,12 +57,12 @@ export type Diagnosis = {
     source: "directory" | "repository" | "default";
     directory: string | null;
   } | null;
-  observed: {
-    name: ConfigValue | null;
-    email: ConfigValue | null;
-    author: string | null;
-    committer: string | null;
-  } | null;
+  observed:
+    | (ObservedFields & {
+        author: string | null;
+        committer: string | null;
+      })
+    | null;
   observationError: string | null;
   conflict: boolean;
 };
@@ -43,6 +71,7 @@ type Contents = { exclusions: string[]; repositories: Repository[] };
 type ScanReport = { found: number; skipped: number; partial: boolean };
 
 export const inventoryApi = {
+  preview: () => invoke<NativePreview>("preview_native_config"),
   add: (path: string) => invoke<number>("add_directory", { path }),
   remove: ({ id, revision }: Directory) =>
     invoke<void>("remove_directory", { id, revision }),

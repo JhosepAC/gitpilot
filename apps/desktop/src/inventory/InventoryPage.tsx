@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Brand } from "../app/Brand";
 import { WorkspaceNav } from "../app/WorkspaceNav";
+import { ConfigPreview } from "./ConfigPreview";
 import { RepositoryDiagnosis } from "./RepositoryDiagnosis";
 import {
   folderName,
@@ -9,7 +10,7 @@ import {
   inventoryError,
   loadInventory,
 } from "./inventoryApi";
-import type { Directory, Repository } from "./inventoryApi";
+import type { Directory, NativePreview, Repository } from "./inventoryApi";
 import "./inventory.css";
 
 const kinds = {
@@ -29,12 +30,14 @@ export function InventoryPage({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"add" | "exclude" | "remove" | null>(null);
+  const [preview, setPreview] = useState<NativePreview>();
   const [path, setPath] = useState("");
   const panel = useRef<HTMLElement>(null);
   const pathInput = useRef<HTMLInputElement>(null);
+  const previewButton = useRef<HTMLButtonElement>(null);
   const directory = view?.directory;
   const repository = view?.repository;
-  const locked = Boolean(busy || mode);
+  const locked = Boolean(busy || mode || preview);
 
   useEffect(() => {
     let mounted = true;
@@ -53,7 +56,7 @@ export function InventoryPage({
 
   useEffect(() => {
     panel.current?.scrollTo({ top: 0 });
-  }, [directory?.id, repository?.id, mode]);
+  }, [directory?.id, repository?.id, mode, preview]);
 
   useEffect(() => {
     pathInput.current?.focus();
@@ -162,6 +165,20 @@ export function InventoryPage({
           <p>Repositorios y reglas de identidad locales.</p>
         </div>
         <div className="action-row">
+          {directory && !mode && !preview && (
+            <button
+              className="button"
+              ref={previewButton}
+              disabled={locked}
+              onClick={() =>
+                void run("Simulando configuración…", async () => {
+                  setPreview(await inventoryApi.preview());
+                })
+              }
+            >
+              Vista previa de Git
+            </button>
+          )}
           {error && (
             <button
               className="button"
@@ -175,7 +192,7 @@ export function InventoryPage({
               Actualizar vista
             </button>
           )}
-          {view && !mode && (
+          {view && !mode && !preview && (
             <button
               className={directory ? "button" : "button primary"}
               disabled={locked}
@@ -232,7 +249,15 @@ export function InventoryPage({
           <div role="status">{busy || notice}</div>
           {error && <p role="alert">{error}</p>}
         </div>
-        {mode === "add" || mode === "exclude" ? (
+        {preview ? (
+          <ConfigPreview
+            preview={preview}
+            onBack={() => {
+              setPreview(undefined);
+              requestAnimationFrame(() => previewButton.current?.focus());
+            }}
+          />
+        ) : mode === "add" || mode === "exclude" ? (
           <>
             <h2>
               {mode === "add" ? "Registrar directorio" : "Excluir subcarpeta"}

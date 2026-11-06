@@ -1,4 +1,4 @@
-import type { Diagnosis } from "./inventoryApi";
+import type { Diagnosis, ObservedFields } from "./inventoryApi";
 import { inventoryError } from "./inventoryApi";
 
 const scopes: Record<string, string> = {
@@ -8,6 +8,29 @@ const scopes: Record<string, string> = {
   worktree: "Worktree",
   command: "Comando",
 };
+
+export function GitConfigFields({ identity }: { identity: ObservedFields }) {
+  return (
+    <dl className="observed-identity">
+      {(
+        [
+          ["Nombre de Git", identity.name],
+          ["Correo de Git", identity.email],
+        ] as const
+      ).map(([label, field]) => (
+        <div key={label}>
+          <dt className="inventory-meta">{label}</dt>
+          <dd>{field?.value ?? "Sin configurar"}</dd>
+          {field && (
+            <dd className="inventory-meta">
+              {scopes[field.scope] ?? field.scope} · {field.origin}
+            </dd>
+          )}
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 export function RepositoryDiagnosis({ diagnosis }: { diagnosis: Diagnosis }) {
   const { expected, observed, conflict, observationError } = diagnosis;
@@ -44,24 +67,7 @@ export function RepositoryDiagnosis({ diagnosis }: { diagnosis: Diagnosis }) {
         <div>
           <h3>Configuración de Git</h3>
           {observed ? (
-            <dl className="observed-identity">
-              {(
-                [
-                  ["Nombre de Git", observed.name],
-                  ["Correo de Git", observed.email],
-                ] as const
-              ).map(([label, field]) => (
-                <div key={label}>
-                  <dt className="inventory-meta">{label}</dt>
-                  <dd>{field?.value ?? "Sin configurar"}</dd>
-                  {field && (
-                    <dd className="inventory-meta">
-                      {scopes[field.scope] ?? field.scope} · {field.origin}
-                    </dd>
-                  )}
-                </div>
-              ))}
-            </dl>
+            <GitConfigFields identity={observed} />
           ) : (
             <p className="inventory-meta">
               {observationError
