@@ -10,8 +10,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "lint": "eslint .",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "prettier --write --end-of-line auto .",
+    "format:check": "prettier --check --end-of-line auto .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "tauri": "tauri"
