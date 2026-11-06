@@ -1,0 +1,60 @@
+name: Desktop CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Check tracked paths
+        run: |
+          ignored_tracked="$(git ls-files --cached --ignored --exclude-standard)"
+          if [[ -n "$ignored_tracked" ]]; then
+            printf 'Tracked paths matching ignore rules:\n%s\n' "$ignored_tracked"
+            exit 1
+          fi
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+      - name: Install Linux desktop libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Install pinned Rust toolchain
+        run: rustc --version
+      - name: Validate frontend
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm test
+      - name: Build desktop app
+        working-directory: apps/desktop
+        run: npm run tauri -- build --debug --no-bundle --ci -- --locked
+      - name: Validate Rust
+        working-directory: apps/desktop/src-tauri
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked --features custom-protocol --all-targets -- -D warnings
+          cargo test --locked --features custom-protocol

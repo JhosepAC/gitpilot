@@ -1,0 +1,15 @@
+@import "tailwindcss" source(none);
+@source "./";
+
+@theme inline {
+  --color-muted: var(--gitpilot-muted);
+  --color-divider: var(--gitpilot-divider);
+}
+
+:root {
+  color-scheme: light dark;
+  color: light-dark(#1f2328, #e6edf3);
+  background: light-dark(#ffffff, #0d1117);
+  --gitpilot-muted: light-dark(#505963, #a7b2bf);
+  --gitpilot-divider: light-dark(#d0d7de, #30363d);
+}

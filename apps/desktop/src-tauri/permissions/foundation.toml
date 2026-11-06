@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-foundation-status"
+description = "Allow the main window to read local storage readiness"
+commands.allow = ["foundation_status"]
