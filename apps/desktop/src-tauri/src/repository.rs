@@ -91,5 +91,7 @@ pub(crate) struct IdentityDiagnosis {
     pub(crate) expected: Option<ExpectedIdentity>,
     pub(crate) observed: Option<ObservedIdentity>,
     pub(crate) conflict: bool,
+    pub(crate) conflict_fingerprint: Option<String>,
+    pub(crate) kept: bool,
     pub(crate) observation_error: Option<InventoryError>,
 }

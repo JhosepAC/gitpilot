@@ -88,8 +88,7 @@ pub(super) struct Candidate {
     pub(super) target: PathBuf,
     pub(super) parent: [u64; 2],
     pub(super) before: Option<native_file::Stamp>,
-    pub(super) generation: PathBuf,
-    pub(super) files: BTreeMap<String, Vec<u8>>,
+    pub(super) generated: Option<(PathBuf, BTreeMap<String, Vec<u8>>)>,
     pub(super) append: String,
 }
 
@@ -248,7 +247,7 @@ fn profile_filename(profile: &Profile) -> String {
     format!("profile-{}-{}.config", profile.id, profile.revision)
 }
 
-fn quote(value: &str) -> String {
+pub(super) fn quote(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
@@ -282,7 +281,7 @@ fn generated_files(rules: &[Rule]) -> BTreeMap<String, Vec<u8>> {
     files
 }
 
-async fn git_line(executable: &Path, cwd: &Path, args: &[&str]) -> Option<String> {
+pub(super) async fn git_line(executable: &Path, cwd: &Path, args: &[&str]) -> Option<String> {
     let mut command = git::command(executable, cwd);
     let (status, bytes) = git::output(command.args(args), GIT_TIME).await.ok()?;
     let output = String::from_utf8(bytes).ok()?;
@@ -291,7 +290,7 @@ async fn git_line(executable: &Path, cwd: &Path, args: &[&str]) -> Option<String
         .then(|| line.into())
 }
 
-fn compatible(version: &str) -> bool {
+pub(super) fn compatible(version: &str) -> bool {
     let Some(version) = version.strip_prefix("git version ") else {
         return false;
     };
@@ -299,6 +298,15 @@ fn compatible(version: &str) -> bool {
         .split('.')
         .map_while(|part| part.parse::<u32>().ok());
     matches!((parts.next(), parts.next(), parts.next()), (Some(a), Some(b), Some(c)) if (a, b, c) >= (2, 39, 5))
+}
+
+pub(crate) async fn version_status(directory: &Path) -> (Option<String>, bool) {
+    let version = match git::executable() {
+        Some(executable) => git_line(&executable, directory, &["--version"]).await,
+        None => None,
+    };
+    let supported = version.as_deref().is_some_and(compatible);
+    (version, supported)
 }
 
 struct GlobalFiles {
@@ -410,7 +418,10 @@ async fn compare(
     })
 }
 
-async fn worktrees(executable: &Path, path: &Path) -> Result<Vec<String>, InventoryError> {
+pub(super) async fn worktrees(
+    executable: &Path,
+    path: &Path,
+) -> Result<Vec<String>, InventoryError> {
     let mut command = git::command(executable, path);
     command.args(["worktree", "list", "--porcelain", "-z"]);
     let (status, output) = git::output(&mut command, GIT_TIME)
@@ -662,8 +673,7 @@ pub(crate) async fn prepare(
                 target: files.destination,
                 parent,
                 before,
-                generation,
-                files: generated,
+                generated: Some((generation, generated)),
                 append,
             });
         }

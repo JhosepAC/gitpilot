@@ -1,6 +1,7 @@
 pub(crate) mod config_apply;
 mod config_backup;
 pub(crate) mod config_preview;
+pub(crate) mod conflicts;
 pub(crate) mod discovery;
 pub(crate) mod git;
 pub(crate) mod git_identity;

@@ -55,6 +55,10 @@ pub fn run() -> tauri::Result<()> {
             repository_commands::preview_native_config,
             repository_commands::native_config_status,
             repository_commands::confirm_native_config,
+            repository_commands::native_activity,
+            repository_commands::setup_status,
+            repository_commands::keep_repository_identity,
+            repository_commands::preview_local_identity,
         ])
         .run(tauri::generate_context!())
 }

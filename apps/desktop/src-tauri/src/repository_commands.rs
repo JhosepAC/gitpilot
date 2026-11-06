@@ -4,18 +4,19 @@ use tauri::State;
 use crate::{
     application::Foundation,
     error::StorageError,
-    infrastructure::{config_apply, config_preview, discovery, inventory},
+    infrastructure::{config_apply, config_preview, conflicts, discovery, inventory},
     repository::{Directory, DirectoryInventory, IdentityDiagnosis, InventoryError, ScanReport},
 };
 
 #[tauri::command]
 pub(crate) async fn native_config_status(
     foundation: State<'_, Foundation>,
+    operation_id: Option<i64>,
 ) -> Result<Option<config_apply::OperationStatus>, config_apply::ApplyError> {
     let pool = foundation
         .database()
         .map_err(|_| config_apply::ApplyError::StorageUnavailable)?;
-    config_apply::status(pool).await
+    config_apply::status(pool, operation_id).await
 }
 
 #[tauri::command]
@@ -23,6 +24,8 @@ pub(crate) async fn confirm_native_config(
     foundation: State<'_, Foundation>,
     confirmation: String,
     restore: bool,
+    repository_id: Option<i64>,
+    operation_id: Option<i64>,
 ) -> Result<(), config_apply::ApplyError> {
     let _guard = foundation
         .inventory_scan
@@ -36,10 +39,75 @@ pub(crate) async fn confirm_native_config(
         .as_deref()
         .ok_or(config_apply::ApplyError::StorageUnavailable)?;
     if restore {
-        config_apply::restore(pool, app, &confirmation).await
+        config_apply::restore(pool, app, &confirmation, operation_id).await
     } else {
-        config_apply::apply(pool, app, &confirmation).await
+        config_apply::apply(pool, app, &confirmation, repository_id).await
     }
+}
+
+#[tauri::command]
+pub(crate) async fn native_activity(
+    foundation: State<'_, Foundation>,
+) -> Result<Vec<config_apply::ActivityItem>, config_apply::ApplyError> {
+    let pool = foundation
+        .database()
+        .map_err(|_| config_apply::ApplyError::StorageUnavailable)?;
+    config_apply::activity(pool).await
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SetupStatus {
+    git_version: Option<String>,
+    compatible_git: bool,
+    identities: i64,
+    directories: i64,
+    assigned_directories: i64,
+    applied: bool,
+}
+
+#[tauri::command]
+pub(crate) async fn setup_status(
+    foundation: State<'_, Foundation>,
+) -> Result<SetupStatus, InventoryError> {
+    let pool = foundation.database()?;
+    let (identities, directories, assigned_directories, applied) = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM identities), (SELECT COUNT(*) FROM directories),
+            (SELECT COUNT(*) FROM identity_rules WHERE directory_id IS NOT NULL),
+            EXISTS (SELECT 1 FROM config_operations WHERE repository_id IS NULL AND state = 'applied')",
+    ).fetch_one(pool).await?;
+    let (git_version, compatible_git) = match foundation.directory.as_deref() {
+        Some(directory) => config_preview::version_status(directory).await,
+        None => (None, false),
+    };
+    Ok(SetupStatus {
+        git_version,
+        compatible_git,
+        identities,
+        directories,
+        assigned_directories,
+        applied,
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn keep_repository_identity(
+    foundation: State<'_, Foundation>,
+    id: i64,
+    fingerprint: String,
+) -> Result<(), InventoryError> {
+    conflicts::keep(foundation.database()?, id, &fingerprint).await
+}
+
+#[tauri::command]
+pub(crate) async fn preview_local_identity(
+    foundation: State<'_, Foundation>,
+    id: i64,
+) -> Result<conflicts::LocalPreview, config_apply::ApplyError> {
+    let pool = foundation
+        .database()
+        .map_err(|_| config_apply::ApplyError::StorageUnavailable)?;
+    conflicts::prepare(pool, id).await
 }
 
 #[tauri::command]
@@ -159,32 +227,5 @@ pub(crate) async fn diagnose_repository(
 ) -> Result<IdentityDiagnosis, InventoryError> {
     let pool = foundation.database()?;
     let repo = inventory::repository(pool, id).await?;
-    let expected = inventory::expected(pool, &repo).await?;
-    let (observed, observation_error) = if repo.present {
-        match discovery::observe(&repo.path, &repo.git_dir).await {
-            Ok(observed) => (Some(observed), None),
-            Err(error) => (None, Some(error)),
-        }
-    } else {
-        (None, None)
-    };
-    let conflict = expected
-        .as_ref()
-        .zip(observed.as_ref())
-        .is_some_and(|(expected, observed)| {
-            observed
-                .name
-                .as_ref()
-                .is_none_or(|name| name.value != expected.git_name)
-                || observed
-                    .email
-                    .as_ref()
-                    .is_none_or(|email| email.value != expected.email)
-        });
-    Ok(IdentityDiagnosis {
-        expected,
-        observed,
-        conflict,
-        observation_error,
-    })
+    conflicts::diagnose(pool, &repo).await
 }

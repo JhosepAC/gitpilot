@@ -9,7 +9,7 @@ use sqlx::SqlitePool;
 use super::{
     config_backup,
     config_preview::{self, Candidate},
-    git,
+    conflicts, git,
     native_file::{self, GitLock, Snapshot, Stage, Stamp},
 };
 
@@ -20,6 +20,7 @@ pub(crate) enum ApplyError {
     Busy,
     UnsafeTarget,
     BackupUnavailable,
+    ActiveOperation,
     VerificationFailed,
     RecoveryRequired,
     StorageUnavailable,
@@ -33,6 +34,8 @@ impl From<sqlx::Error> for ApplyError {
 
 #[derive(sqlx::FromRow)]
 struct Operation {
+    id: i64,
+    repository_id: Option<i64>,
     token: String,
     target: String,
     parent_id: String,
@@ -48,19 +51,50 @@ struct Operation {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct OperationStatus {
+    id: i64,
+    local: bool,
     state: String,
     target: String,
     confirmation: Option<String>,
 }
 
-async fn live(pool: &SqlitePool) -> Result<Option<Operation>, ApplyError> {
-    Ok(sqlx::query_as(
-        "SELECT token, target, parent_id, before_stamp, backup, candidate_hash,
-                candidate_id, applied_stamp, recovery_id, state FROM config_operations
-         WHERE state IN ('preparing', 'applied', 'restoring')",
-    )
+const OPERATION: &str = "SELECT rowid AS id, repository_id, token, target, parent_id, before_stamp,
+    backup, candidate_hash, candidate_id, applied_stamp, recovery_id, state FROM config_operations";
+
+async fn live(
+    pool: &SqlitePool,
+    repository: Option<i64>,
+    operation: Option<i64>,
+) -> Result<Option<Operation>, ApplyError> {
+    Ok(sqlx::query_as(&format!(
+        "{OPERATION} WHERE state IN ('preparing', 'applied', 'restoring')
+            AND ((? IS NULL AND repository_id IS ?) OR rowid = ?)"
+    ))
+    .bind(operation)
+    .bind(repository)
+    .bind(operation)
     .fetch_optional(pool)
     .await?)
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ActivityItem {
+    id: i64,
+    target: String,
+    state: String,
+    scope: String,
+    at: String,
+}
+
+pub(crate) async fn activity(pool: &SqlitePool) -> Result<Vec<ActivityItem>, ApplyError> {
+    Ok(sqlx::query_as(
+        "SELECT rowid AS id, target, state, CASE WHEN repository_id IS NULL THEN 'global' ELSE 'local' END AS scope,
+            COALESCE(updated_at, created_at) AS at FROM config_operations
+         UNION ALL
+         SELECT -id, path, 'kept', 'local', created_at FROM conflict_decisions
+         ORDER BY at DESC, id DESC LIMIT 100",
+    ).fetch_all(pool).await?)
 }
 
 fn encoded<T: Serialize>(value: &T) -> Result<String, ApplyError> {
@@ -136,11 +170,13 @@ impl Operation {
 }
 
 async fn set_state(pool: &SqlitePool, token: &str, state: &str) -> Result<(), ApplyError> {
-    let result = sqlx::query("UPDATE config_operations SET state = ? WHERE token = ?")
-        .bind(state)
-        .bind(token)
-        .execute(pool)
-        .await?;
+    let result = sqlx::query(
+        "UPDATE config_operations SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE token = ?",
+    )
+    .bind(state)
+    .bind(token)
+    .execute(pool)
+    .await?;
     if result.rows_affected() != 1 {
         return Err(ApplyError::StorageUnavailable);
     }
@@ -164,7 +200,7 @@ fn clean_stage(operation: &Operation, target: &Path, recovery: bool) -> Result<(
     Ok(())
 }
 
-async fn verify_global(target: &Path) -> Result<(), ApplyError> {
+async fn verify_config(target: &Path) -> Result<(), ApplyError> {
     if !target.exists() {
         return Ok(());
     }
@@ -222,7 +258,7 @@ async fn recover(
         clean_stage(operation, target, false)?;
         clean_stage(operation, target, true)?;
         if operation.recovery_id.is_some() {
-            verify_global(target).await?;
+            verify_config(target).await?;
         }
         return set_state(pool, &operation.token, terminal).await;
     }
@@ -268,22 +304,31 @@ async fn recover(
         native_file::sync_parent(target).map_err(|_| ApplyError::RecoveryRequired)?;
     }
     clean_stage(operation, target, false)?;
-    verify_global(target).await?;
+    verify_config(target).await?;
     set_state(pool, &operation.token, terminal).await
 }
 
 pub(crate) async fn reconcile(pool: &SqlitePool, app: &Path) -> Result<(), ApplyError> {
     let _application = lock(app)?;
-    if let Some(operation) = live(pool).await? {
-        if operation.state != "applied" {
-            recover(pool, &operation, true).await?;
+    let pending = sqlx::query_as::<_, Operation>(&format!(
+        "{OPERATION} WHERE state IN ('preparing', 'restoring')"
+    ))
+    .fetch_all(pool)
+    .await?;
+    let mut outcome = Ok(());
+    for operation in pending {
+        if let Err(error) = recover(pool, &operation, true).await {
+            outcome = Err(error);
         }
     }
-    Ok(())
+    outcome
 }
 
-pub(crate) async fn status(pool: &SqlitePool) -> Result<Option<OperationStatus>, ApplyError> {
-    let Some(operation) = live(pool).await? else {
+pub(crate) async fn status(
+    pool: &SqlitePool,
+    operation: Option<i64>,
+) -> Result<Option<OperationStatus>, ApplyError> {
+    let Some(operation) = live(pool, None, operation).await? else {
         return Ok(None);
     };
     let current = snapshot(Path::new(&operation.target), operation.parent()?)
@@ -298,6 +343,8 @@ pub(crate) async fn status(pool: &SqlitePool) -> Result<Option<OperationStatus>,
         None
     };
     Ok(Some(OperationStatus {
+        id: operation.id,
+        local: operation.repository_id.is_some(),
         state: if operation.state == "applied" && confirmation.is_some() {
             "applied".into()
         } else {
@@ -306,6 +353,48 @@ pub(crate) async fn status(pool: &SqlitePool) -> Result<Option<OperationStatus>,
         target: operation.target,
         confirmation,
     }))
+}
+
+enum Plan {
+    Global(Box<config_preview::ConfigPreview>),
+    Local(Box<conflicts::LocalPreview>),
+}
+
+impl Plan {
+    async fn prepare(pool: &SqlitePool, app: &Path, repo: Option<i64>) -> Result<Self, ApplyError> {
+        if let Some(id) = repo {
+            return Ok(Self::Local(Box::new(conflicts::prepare(pool, id).await?)));
+        }
+        Ok(Self::Global(Box::new(
+            config_preview::prepare(pool, app)
+                .await
+                .map_err(|_| ApplyError::StalePreview)?,
+        )))
+    }
+
+    fn confirmation(&self) -> Option<&str> {
+        match self {
+            Self::Global(preview) => preview.confirmation(),
+            Self::Local(preview) => Some(&preview.confirmation),
+        }
+    }
+
+    fn candidate(&self) -> Option<&Candidate> {
+        match self {
+            Self::Global(preview) => preview.candidate.as_ref(),
+            Self::Local(preview) => Some(&preview.candidate),
+        }
+    }
+
+    async fn verify(&self) -> Result<(), ApplyError> {
+        match self {
+            Self::Global(preview) => preview
+                .verify()
+                .await
+                .map_err(|_| ApplyError::VerificationFailed),
+            Self::Local(preview) => preview.verify().await,
+        }
+    }
 }
 
 fn candidate_bytes(
@@ -336,18 +425,25 @@ pub(crate) async fn apply(
     pool: &SqlitePool,
     app: &Path,
     confirmation: &str,
+    repository: Option<i64>,
 ) -> Result<(), ApplyError> {
     let _application = lock(app)?;
-    if live(pool).await?.is_some() {
+    let blocked: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM config_operations WHERE state IN ('preparing','restoring'))",
+    )
+    .fetch_one(pool)
+    .await?;
+    if blocked {
         return Err(ApplyError::RecoveryRequired);
     }
-    let preview = config_preview::prepare(pool, app)
-        .await
-        .map_err(|_| ApplyError::StalePreview)?;
+    if live(pool, repository, None).await?.is_some() {
+        return Err(ApplyError::ActiveOperation);
+    }
+    let preview = Plan::prepare(pool, app, repository).await?;
     if preview.confirmation() != Some(confirmation) {
         return Err(ApplyError::StalePreview);
     }
-    let candidate = preview.candidate.as_ref().ok_or(ApplyError::StalePreview)?;
+    let candidate = preview.candidate().ok_or(ApplyError::StalePreview)?;
     let target = &candidate.target;
     let before = snapshot(target, candidate.parent)?;
     if before.as_ref().map(|file| &file.stamp) != candidate.before.as_ref() {
@@ -370,14 +466,14 @@ pub(crate) async fn apply(
         None
     };
     sqlx::query(
-        "INSERT INTO config_operations (token, target, parent_id, before_stamp, backup, candidate_hash, state)
-         VALUES (?, ?, ?, ?, ?, ?, 'preparing')",
+        "INSERT INTO config_operations (token, target, parent_id, before_stamp, backup, candidate_hash, repository_id, state)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'preparing')",
     )
     .bind(&token).bind(target.to_str().ok_or(ApplyError::UnsafeTarget)?)
     .bind(encoded(&candidate.parent)?)
     .bind(candidate.before.as_ref().map(encoded).transpose()?)
     .bind(backup)
-    .bind(hex::encode(native_file::digest(&bytes))).execute(pool).await?;
+    .bind(hex::encode(native_file::digest(&bytes))).bind(repository).execute(pool).await?;
     let git_lock = match GitLock::acquire(target, &token) {
         Ok(guard) => guard,
         Err(_) => {
@@ -386,22 +482,17 @@ pub(crate) async fn apply(
         }
     };
     let result = async {
-        let checked = config_preview::prepare(pool, app)
-            .await
-            .map_err(|_| ApplyError::StalePreview)?;
+        let checked = Plan::prepare(pool, app, repository).await?;
         if checked.confirmation() != Some(confirmation) {
             return Err(ApplyError::StalePreview);
         }
-        let root = candidate
-            .generation
-            .parent()
-            .ok_or(ApplyError::UnsafeTarget)?;
-        native_file::private_directory(root).map_err(|_| ApplyError::UnsafeTarget)?;
-        native_file::private_directory(&candidate.generation)
-            .map_err(|_| ApplyError::UnsafeTarget)?;
-        for (name, bytes) in &candidate.files {
-            native_file::create_immutable(&candidate.generation.join(name), bytes)
-                .map_err(|_| ApplyError::UnsafeTarget)?;
+        if let Some((generation, files)) = &candidate.generated {
+            let root = generation.parent().ok_or(ApplyError::UnsafeTarget)?;
+            native_file::private_directory(root).map_err(|_| ApplyError::UnsafeTarget)?;
+            native_file::private_directory(generation).map_err(|_| ApplyError::UnsafeTarget)?;
+            for (name, bytes) in files {
+                native_file::create_immutable(&generation.join(name), bytes).map_err(|_| ApplyError::UnsafeTarget)?;
+            }
         }
         let mut stage = Stage::create(
             stage_path(target, &token, false)?,
@@ -437,15 +528,12 @@ pub(crate) async fn apply(
         {
             return Err(ApplyError::VerificationFailed);
         }
-        preview
-            .verify()
-            .await
-            .map_err(|_| ApplyError::VerificationFailed)?;
+        preview.verify().await?;
         if !snapshot(target, candidate.parent)?.is_some_and(|file| file.stamp == applied.stamp) {
             return Err(ApplyError::VerificationFailed);
         }
         sqlx::query(
-            "UPDATE config_operations SET state = 'applied', applied_stamp = ? WHERE token = ?",
+            "UPDATE config_operations SET state = 'applied', applied_stamp = ?, updated_at = CURRENT_TIMESTAMP WHERE token = ?",
         )
         .bind(encoded(&applied.stamp)?)
         .bind(&token)
@@ -455,7 +543,9 @@ pub(crate) async fn apply(
     }
     .await;
     if result.is_err() {
-        let operation = live(pool).await?.ok_or(ApplyError::RecoveryRequired)?;
+        let operation = live(pool, repository, None)
+            .await?
+            .ok_or(ApplyError::RecoveryRequired)?;
         if recover(pool, &operation, false).await.is_err() {
             return Err(ApplyError::RecoveryRequired);
         }
@@ -468,9 +558,12 @@ pub(crate) async fn restore(
     pool: &SqlitePool,
     app: &Path,
     confirmation: &str,
+    operation_id: Option<i64>,
 ) -> Result<(), ApplyError> {
     let _application = lock(app)?;
-    let operation = live(pool).await?.ok_or(ApplyError::StalePreview)?;
+    let operation = live(pool, None, operation_id)
+        .await?
+        .ok_or(ApplyError::StalePreview)?;
     let target = Path::new(&operation.target);
     let current = snapshot(target, operation.parent()?)?;
     let Some(current) = current.filter(|file| operation.applied(Some(file))) else {
@@ -491,7 +584,9 @@ pub(crate) async fn restore(
         return Err(ApplyError::StalePreview);
     }
     set_state(pool, &operation.token, "restoring").await?;
-    let operation = live(pool).await?.ok_or(ApplyError::RecoveryRequired)?;
+    let operation = live(pool, None, Some(operation.id))
+        .await?
+        .ok_or(ApplyError::RecoveryRequired)?;
     recover(pool, &operation, false)
         .await
         .map_err(|_| ApplyError::RecoveryRequired)
@@ -534,11 +629,14 @@ mod tests {
                         Err(ApplyError::RecoveryRequired)
                     );
                     assert_eq!(fs::read(&target).unwrap(), b"[user]\nname = External\n");
-                    assert_eq!(live(&pool).await.unwrap().unwrap().state, "preparing");
+                    assert_eq!(
+                        live(&pool, None, None).await.unwrap().unwrap().state,
+                        "preparing"
+                    );
                 } else {
                     reconcile(&pool, &app).await.unwrap();
                     assert!(!target.exists());
-                    assert!(live(&pool).await.unwrap().is_none());
+                    assert!(live(&pool, None, None).await.unwrap().is_none());
                 }
             }
         });
