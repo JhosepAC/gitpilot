@@ -5,6 +5,8 @@ import { WorkspaceNav } from "../app/WorkspaceNav";
 import type { Workspace } from "../app/WorkspaceNav";
 import { ConfigPreview, NativeOperationPanel } from "./ConfigPreview";
 import { RepositoryDiagnosis } from "./RepositoryDiagnosis";
+import { RepositoryInspector } from "./RepositoryInspector";
+import type { InspectorData } from "./RepositoryInspector";
 import {
   folderName,
   inventoryApi,
@@ -40,15 +42,19 @@ export function InventoryPage({
   const [preview, setPreview] = useState<NativePreview>();
   const [nativeOperation, setNativeOperation] = useState<NativeOperation>();
   const [localPreview, setLocalPreview] = useState<LocalPreview>();
+  const [inspector, setInspector] = useState<InspectorData>();
   const [path, setPath] = useState("");
   const panel = useRef<HTMLElement>(null);
   const pathInput = useRef<HTMLInputElement>(null);
   const localReviewTitle = useRef<HTMLHeadingElement>(null);
   const localReviewButton = useRef<HTMLButtonElement>(null);
   const previewButton = useRef<HTMLButtonElement>(null);
+  const inspectorButton = useRef<HTMLButtonElement>(null);
   const directory = view?.directory;
   const repository = view?.repository;
-  const configOpen = Boolean(preview || nativeOperation || localPreview);
+  const configOpen = Boolean(
+    preview || nativeOperation || localPreview || inspector,
+  );
   const locked = Boolean(busy || mode || configOpen);
 
   useEffect(() => {
@@ -319,7 +325,16 @@ export function InventoryPage({
           <div role="status">{busy || notice}</div>
           {error && <p role="alert">{error}</p>}
         </div>
-        {localPreview ? (
+        {inspector && repository ? (
+          <RepositoryInspector
+            data={inspector}
+            name={folderName(repository.path)}
+            onBack={() => {
+              setInspector(undefined);
+              requestAnimationFrame(() => inspectorButton.current?.focus());
+            }}
+          />
+        ) : localPreview ? (
           <>
             <button
               className="button inventory-back"
@@ -444,7 +459,23 @@ export function InventoryPage({
             >
               Volver al directorio
             </button>
-            <h2>{folderName(repository.path)}</h2>
+            <div className="detail-heading">
+              <h2>{folderName(repository.path)}</h2>
+              {repository.present && (
+                <button
+                  className="button"
+                  ref={inspectorButton}
+                  disabled={locked}
+                  onClick={() =>
+                    void run("Inspeccionando Git…", async () =>
+                      setInspector(await inventoryApi.inspect(repository.id)),
+                    )
+                  }
+                >
+                  Abrir Inspector
+                </button>
+              )}
+            </div>
             <p className="panel-intro">{repository.path}</p>
             <p className="inventory-meta">
               {repository.present

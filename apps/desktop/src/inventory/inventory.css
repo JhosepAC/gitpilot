@@ -131,6 +131,35 @@
   margin-inline-start: 0.9rem;
 }
 
+.inspector-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin-block: 0.75rem 0.5rem;
+}
+
+.inspector-counts dt,
+.inspector-remotes dt {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.inspector-counts dd {
+  font-variant-numeric: tabular-nums;
+  font-weight: 620;
+}
+
+.inspector-remotes li {
+  padding-block: 0.5rem;
+  border-block-end: 1px solid var(--line);
+}
+
+.inspector-remotes dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.2rem 0.75rem;
+}
+
 @media (max-width: 36rem) {
   .inventory-diagnosis {
     grid-template-columns: minmax(0, 1fr);

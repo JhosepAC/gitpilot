@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { identityApi } from "../identities/identityApi";
+import type { InspectorData } from "./RepositoryInspector";
 
 export type Directory = {
   id: number;
@@ -96,6 +97,7 @@ type Contents = { exclusions: string[]; repositories: Repository[] };
 type ScanReport = { found: number; skipped: number; partial: boolean };
 
 export const inventoryApi = {
+  inspect: (id: number) => invoke<InspectorData>("inspect_repository", { id }),
   preview: () => invoke<NativePreview>("preview_native_config"),
   nativeStatus: (operationId?: number) =>
     invoke<NativeOperation | null>("native_config_status", { operationId }),
