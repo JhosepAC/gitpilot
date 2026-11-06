@@ -1,0 +1,12 @@
+[[permission]]
+identifier = "allow-manage-identities"
+description = "Manage local identity profiles and read the global Git identity"
+commands.allow = [
+    "list_identities",
+    "create_identity",
+    "update_identity",
+    "duplicate_identity",
+    "set_identity_default",
+    "delete_identity",
+    "detect_git_identity",
+]

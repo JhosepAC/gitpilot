@@ -6,12 +6,13 @@ use crate::{error::StorageError, infrastructure::storage};
 
 pub(crate) struct Foundation {
     database: Result<SqlitePool, StorageError>,
+    pub(crate) directory: Option<PathBuf>,
 }
 
 impl Foundation {
     pub(crate) async fn initialize(directory: Option<PathBuf>) -> Self {
-        let database = match directory {
-            Some(directory) => storage::open(&directory).await,
+        let database = match directory.as_deref() {
+            Some(directory) => storage::open(directory).await,
             None => Err(StorageError::Unavailable),
         };
 
@@ -19,11 +20,17 @@ impl Foundation {
             tracing::warn!(?error, "local storage startup failed");
         }
 
-        Self { database }
+        Self {
+            database,
+            directory,
+        }
+    }
+
+    pub(crate) fn database(&self) -> Result<&SqlitePool, StorageError> {
+        self.database.as_ref().map_err(|error| *error)
     }
 
     pub(crate) async fn check_database(&self) -> Result<(), StorageError> {
-        let database = self.database.as_ref().map_err(|error| *error)?;
-        storage::check(database).await
+        storage::check(self.database()?).await
     }
 }

@@ -1,6 +1,7 @@
 mod application;
 mod commands;
 mod error;
+mod identity;
 mod infrastructure;
 
 use tauri::Manager;
@@ -21,6 +22,15 @@ pub fn run() -> tauri::Result<()> {
             app.manage(foundation);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::foundation_status])
+        .invoke_handler(tauri::generate_handler![
+            commands::foundation_status,
+            commands::list_identities,
+            commands::create_identity,
+            commands::update_identity,
+            commands::duplicate_identity,
+            commands::set_identity_default,
+            commands::delete_identity,
+            commands::detect_git_identity,
+        ])
         .run(tauri::generate_context!())
 }

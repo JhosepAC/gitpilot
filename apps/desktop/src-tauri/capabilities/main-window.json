@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-window",
-  "description": "Local main window with read-only access to the foundation status",
+  "description": "Local main window for storage readiness and identity management",
   "windows": ["main"],
-  "permissions": ["allow-foundation-status"]
+  "permissions": ["allow-foundation-status", "allow-manage-identities"]
 }
