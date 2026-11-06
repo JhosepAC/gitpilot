@@ -6,6 +6,8 @@ La sección **Identidades** permite crear, editar, duplicar y eliminar perfiles 
 
 En **Directorios**, añade la ruta absoluta de una carpeta de trabajo y pulsa **Escanear**. Puedes excluir subcarpetas, asignar un perfil al directorio y definir excepciones por repositorio. Abre un repositorio para comparar la identidad esperada con la configuración que Git devuelve. GitPilot guarda las reglas en SQLite y consulta Git en modo de solo lectura. La aplicación a Git corresponde a la fase 4. [Roadmap](docs/ROADMAP.md)
 
+Pulsa **Vista previa de Git** para ver qué archivo global recibiría la inclusión, qué reglas se generarían para todo el inventario y qué valores prevalecerían en los repositorios que GitPilot puede verificar. La simulación usa archivos temporales y conserva la configuración existente.
+
 ## Ejecutar en desarrollo
 
 Instala Node.js 24, npm y Rust mediante rustup. El archivo `rust-toolchain.toml` selecciona Rust y sus componentes de formato y lint.

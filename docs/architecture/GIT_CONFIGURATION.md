@@ -21,6 +21,12 @@
 4. **Verificación.** Releer mediante Git los casos afectados, incluidos conflictos que se conservaron. Verificar los alcances y actualizar SQLite solo tras confirmar. Una verificación fallida activa recuperación.
 5. **Recuperación.** Deshacer en orden inverso solo donde la identidad y huella actuales coincidan con el estado escrito por GitPilot. Eliminar un archivo originalmente ausente bajo esa misma precondición. Si existen ediciones ajenas, conservar respaldos y bloquear escrituras afectadas hasta resolverlas. Al reabrir, reconciliar operaciones interrumpidas. La restauración manual también requiere vista previa y confirmación.
 
+## Vista previa de la fase 4
+
+GitPilot lee una instantánea del inventario y genera un manifiesto candidato con las reglas de carpeta antes que las excepciones. Una raíz interior sin regla explícita hereda la regla de un ancestro antes de usar el predeterminado. Git evalúa los perfiles y el manifiesto en un directorio temporal privado de la aplicación. La simulación usa un archivo global temporal que incluye XDG y HOME en su orden normal y después el manifiesto candidato. Los includes relativos de la configuración original siguen resolviéndose desde sus propios archivos.
+
+La comparación se limita a la configuración de identidad de repositorios conocidos y worktrees vinculados verificables. El presupuesto es de 80 comparaciones y 15 segundos para el recorrido de verificación. Una raíz sin escaneo completo, un entorno redirigido o una topología especial pueden reducir la cobertura. La simulación añade un nivel de inclusión y puede fallar en configuraciones que ya estén cerca del límite de Git. Las reglas de carpeta pueden alcanzar repositorios ordinarios futuros y rutas excluidas del inventario. Los resultados describen el momento de la consulta. La confirmación de escritura requerirá una nueva comprobación de archivos y revisiones bajo bloqueo.
+
 ## Evidencia y prueba de viabilidad
 
 La [matriz de fase 0](../testing/PHASE_0.md) registra qué comportamiento se observó con Git real, el Git mínimo candidato y las comprobaciones pendientes. El [ADR de recuperación](../decisions/ADR-003-recuperacion.md) define los estados y las condiciones de restauración que deberá validar el motor.

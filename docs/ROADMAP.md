@@ -56,3 +56,7 @@ La pantalla Identidades permite administrar perfiles persistidos, elegir un pred
 ## Estado de la fase 3
 
 La pantalla Directorios registra raíces, descubre repositorios bajo demanda y admite exclusiones. Conserva los resultados anteriores cuando el escaneo es parcial. La identidad esperada se calcula con la excepción del repositorio, la regla del ancestro más específico o el predeterminado dentro del inventario. El diagnóstico muestra las discrepancias, el origen de cada valor de Git y el autor y committer que Git devuelve para el contexto de la aplicación. Las reglas se guardan en SQLite. La fase 4 materializará los cambios de configuración previa revisión y confirmación. [Validaciones](testing/TESTING.md#evidencia-de-fase-3)
+
+## Estado de la fase 4
+
+La primera entrega añade una vista previa de solo lectura para todo el inventario. Selecciona un destino global candidato, presenta las reglas ordenadas y compara con Git la configuración actual y simulada por repositorio. Indica conflictos conservados, cobertura parcial y casos que requieren diagnóstico. La siguiente entrega liga la confirmación a un plan vigente y habilita la aplicación cuando se validen los locks, el respaldo cifrado, el reemplazo durable y la recuperación. El cierre del hito incluye onboarding, auditoría, instaladores y los casos M1–M6. [Protocolo](architecture/GIT_CONFIGURATION.md)

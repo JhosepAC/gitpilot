@@ -28,6 +28,8 @@ Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de c
 
 **Directorios.** La navegación lateral comparte la ventana fija con Identidades. Registrar una raíz requiere su ruta absoluta y el escaneo empieza al pulsar «Escanear». El panel informa del resultado y permite gestionar exclusiones y asignaciones. El detalle de cada repositorio distingue la identidad esperada de la configuración observada en Git y deja las rutas internas y los valores de autor y committer en secciones desplegables.
 
+**Vista previa de Git.** Se abre en el panel de Directorios, con el destino y el manifiesto primero. Los repositorios con discrepancias aparecen antes que el resto. Se puede desplegar la comparación por campo y el patrón de cada regla. Volver al inventario conserva la selección y devuelve el foco al botón de entrada.
+
 **Ventana.** El área de trabajo es fija de 900 × 600 píxeles lógicos, con minimizar y cerrar mediante los controles nativos. La lista y el detalle se desplazan de forma independiente. El diseño reorganiza los paneles cuando el zoom reduce el espacio de contenido.
 
 ## Criterios visuales y de accesibilidad
