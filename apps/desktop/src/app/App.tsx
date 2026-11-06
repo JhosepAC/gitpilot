@@ -3,6 +3,7 @@ import type { FoundationState } from "./foundation";
 import { readFoundationStatus } from "./foundation";
 import { IdentitiesPage } from "../identities/IdentitiesPage";
 import { Brand } from "./Brand";
+import { InventoryPage } from "../inventory/InventoryPage";
 
 const messages = {
   loading: "Comprobando el almacenamiento local…",
@@ -12,6 +13,9 @@ const messages = {
 
 export function App() {
   const [state, setState] = useState<FoundationState>({ kind: "loading" });
+  const [workspace, setWorkspace] = useState<"identities" | "directories">(
+    "identities",
+  );
 
   useEffect(() => {
     let active = true;
@@ -23,7 +27,13 @@ export function App() {
     };
   }, []);
 
-  if (state.kind === "ready") return <IdentitiesPage />;
+  if (state.kind === "ready") {
+    return workspace === "identities" ? (
+      <IdentitiesPage onNavigate={setWorkspace} />
+    ) : (
+      <InventoryPage onNavigate={setWorkspace} />
+    );
+  }
 
   return (
     <main className="startup">

@@ -10,6 +10,7 @@ export type Identity = IdentityInput & {
   id: number;
   revision: number;
   isDefault: boolean;
+  assignmentCount: number;
 };
 
 function reference({ id, revision }: Identity) {

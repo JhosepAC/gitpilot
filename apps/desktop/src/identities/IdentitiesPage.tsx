@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Brand } from "../app/Brand";
+import { WorkspaceNav } from "../app/WorkspaceNav";
 import { IdentityEditor } from "./IdentityEditor";
 import { identityApi, identityError } from "./identityApi";
 import type { Identity, IdentityInput } from "./identityApi";
@@ -17,7 +18,11 @@ type Pane =
 
 const emptyInput = { label: "", gitName: "", email: "" };
 
-export function IdentitiesPage() {
+export function IdentitiesPage({
+  onNavigate,
+}: {
+  onNavigate: (workspace: "identities" | "directories") => void;
+}) {
   const [profiles, setProfiles] = useState<Identity[] | null>(null);
   const [pane, setPane] = useState<Pane>({ kind: "detail" });
   const [busy, setBusy] = useState(false);
@@ -140,6 +145,11 @@ export function IdentitiesPage() {
       </header>
       <aside className="identity-sidebar" aria-label="Perfiles guardados">
         <Brand />
+        <WorkspaceNav
+          current="identities"
+          onNavigate={onNavigate}
+          disabled={busy || pane.kind !== "detail"}
+        />
         <div className="list-heading">
           <h2>Perfiles</h2>
           {profiles && <span>{profiles.length}</span>}
@@ -276,11 +286,17 @@ export function IdentitiesPage() {
             <div className="identity-usage">
               <div>
                 <h3>Uso en GitPilot</h3>
-                <p>
-                  {active.isDefault
-                    ? "Perfil predeterminado."
-                    : "Sin asignaciones activas."}
-                </p>
+                {active.isDefault && <p>Perfil predeterminado.</p>}
+                {!active.isDefault && active.assignmentCount === 0 && (
+                  <p>Sin asignaciones activas.</p>
+                )}
+                {active.assignmentCount > 0 && (
+                  <p>
+                    {active.assignmentCount === 1
+                      ? "1 asignación local."
+                      : `${active.assignmentCount} asignaciones locales.`}
+                  </p>
+                )}
               </div>
               <button
                 className="button"
@@ -317,15 +333,24 @@ export function IdentitiesPage() {
               </button>
               <button
                 className="button danger"
-                disabled={busy || active.isDefault}
+                disabled={
+                  busy || active.isDefault || active.assignmentCount > 0
+                }
                 onClick={() => show({ kind: "delete", profile: active })}
               >
                 Eliminar
               </button>
-              {active.isDefault && (
+              {active.assignmentCount > 0 ? (
                 <small>
-                  Quita la preferencia para poder eliminar este perfil.
+                  Cambia las asignaciones en Directorios antes de eliminar este
+                  perfil.
                 </small>
+              ) : (
+                active.isDefault && (
+                  <small>
+                    Quita la preferencia para poder eliminar este perfil.
+                  </small>
+                )
               )}
             </div>
             {error && (
