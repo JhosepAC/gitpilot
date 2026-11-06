@@ -24,7 +24,9 @@ El flujo central es **Carpeta → Identidad → Vista previa → Aplicar → Ver
 
 Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de conflicto, vista previa vencida y recuperación.
 
-**Identidades.** Una lista lateral muestra los perfiles y la selección predeterminada. El panel principal reúne el nombre y correo en «Autor del commit», con el uso local y las acciones debajo. Crear, editar e importar comparten un formulario. La importación empieza como borrador revisable y la eliminación se confirma en el panel. En la fase 2 el único uso activo es la preferencia predeterminada. La fase 3 añadirá asignaciones a directorios y repositorios.
+**Identidades.** Una lista lateral muestra los perfiles y la selección predeterminada. El panel principal reúne el nombre y correo en «Autor del commit», con el uso local y las acciones debajo. Crear, editar e importar comparten un formulario. La importación empieza como borrador revisable y la eliminación se confirma en el panel. El uso local indica el predeterminado y el número de asignaciones.
+
+**Directorios.** La navegación lateral comparte la ventana fija con Identidades. Registrar una raíz requiere su ruta absoluta y el escaneo empieza al pulsar «Escanear». El panel informa del resultado y permite gestionar exclusiones y asignaciones. El detalle de cada repositorio distingue la identidad esperada de la configuración observada en Git y deja las rutas internas y los valores de autor y committer en secciones desplegables.
 
 **Ventana.** El área de trabajo es fija de 900 × 600 píxeles lógicos, con minimizar y cerrar mediante los controles nativos. La lista y el detalle se desplazan de forma independiente. El diseño reorganiza los paneles cuando el zoom reduce el espacio de contenido.
 

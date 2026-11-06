@@ -2,7 +2,9 @@
 
 GitPilot es una aplicación de escritorio local-first para gestionar identidades Git. El lanzamiento apunta a Windows y Linux x86_64. macOS queda como ampliación futura.
 
-La sección **Identidades** permite crear, editar, duplicar y eliminar perfiles locales, y elegir un predeterminado. **Importar desde Git** lee el nombre y el correo globales y abre un borrador para revisión antes de guardar. Las reglas por directorio y su aplicación a Git se incorporan en los siguientes hitos del [roadmap](docs/ROADMAP.md).
+La sección **Identidades** permite crear, editar, duplicar y eliminar perfiles locales, y elegir un predeterminado. **Importar desde Git** lee el nombre y el correo globales y abre un borrador para revisión antes de guardar.
+
+En **Directorios**, añade la ruta absoluta de una carpeta de trabajo y pulsa **Escanear**. Puedes excluir subcarpetas, asignar un perfil al directorio y definir excepciones por repositorio. Abre un repositorio para comparar la identidad esperada con la configuración que Git devuelve. GitPilot guarda las reglas en SQLite y consulta Git en modo de solo lectura. La aplicación a Git corresponde a la fase 4. [Roadmap](docs/ROADMAP.md)
 
 ## Ejecutar en desarrollo
 

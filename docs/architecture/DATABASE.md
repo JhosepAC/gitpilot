@@ -9,10 +9,11 @@ SQLite guarda la intención del usuario, inventario, estado de operaciones y met
 | Tabla | Campos y restricciones |
 | --- | --- |
 | `identities` | ID estable, etiqueta, nombre Git, correo, revisión y marcas de tiempo. Correo admite duplicados. Un índice parcial garantiza como máximo un perfil predeterminado. |
-| `directories` | ID, ruta mostrada, ruta canónica/identificador de filesystem, estado y revisión. Un registro por raíz reconocida. |
-| `directory_exclusions` | Raíz, ruta relativa normalizada y estado. Clave única por raíz y ruta. La exclusión delimita el escaneo. |
-| `repositories` | ID, raíz de trabajo visible y canónica, Git dir efectivo, Git dir común, tipo, estado y última observación. Los worktrees conservan una fila por contexto de trabajo. Un repositorio puede aparecer bajo varias raíces. |
-| `identity_rules` | Identidad, objetivo único, revisión. El objetivo es una raíz/directorio registrado o un repositorio. Restricción XOR y unicidad por tipo de objetivo activo. Eliminar una identidad referenciada exige resolver sus asignaciones. |
+| `directories` | ID, ruta canónica, revisión y estado de escaneo. Un registro por raíz reconocida. |
+| `directory_exclusions` | Raíz y ruta canónica de la subcarpeta. Clave única por raíz y ruta. La exclusión delimita el escaneo. |
+| `repositories` | ID, ruta canónica, Git dir efectivo, Git dir común, tipo y revisión. Los worktrees conservan una fila por contexto de trabajo. |
+| `directory_repositories` | Pertenencia y presencia de cada repositorio por raíz. Un repositorio puede aparecer bajo varias raíces y compartir su excepción. |
+| `identity_rules` | Identidad y objetivo único. El objetivo es una raíz registrada o un repositorio y su revisión protege las actualizaciones de la regla. Restricción XOR y unicidad por tipo de objetivo. Eliminar una identidad referenciada exige retirar o cambiar sus asignaciones. |
 | `app_settings` | Preferencias tipadas, tema y límites de escaneo. |
 | `config_operations` | ID, operación relacionada si restaura, versión del plan, estado, revisión de intención, huella y marcas de tiempo. El journal durable registra etapas y permite recuperar operaciones incompletas. |
 | `config_backups` | Operación, destino, referencia privada al respaldo, existencia previa, huellas anterior/posterior y retención. Restauración conserva permisos y atributos requeridos. |
@@ -20,7 +21,9 @@ SQLite guarda la intención del usuario, inventario, estado de operaciones y met
 
 Activar claves foráneas en cada conexión. Usar migraciones versionadas, transacciones para cambios internos e índices para reglas por destino, repositorios por ubicación y auditoría por fecha. Registrar rutas sin perder información necesaria para operar en el SO. Ante una representación que no pueda serializarse o usarse con seguridad en Git, ofrecer diagnóstico y excluirla de escrituras.
 
-La revisión del perfil se comprueba al editarlo, duplicarlo, cambiar su estado predeterminado o eliminarlo. La sustitución del predeterminado se hace en una transacción. Antes de eliminarlo hay que retirar esa preferencia o trasladarla a otro perfil. Las reglas de identidad de la fase 3 deben referenciar el ID con una clave foránea que impida eliminar perfiles asignados.
+La revisión del perfil se comprueba al editarlo, duplicarlo, cambiar su estado predeterminado o eliminarlo. La sustitución del predeterminado se hace en una transacción. Antes de eliminarlo hay que retirar esa preferencia o trasladarla a otro perfil. Una clave foránea impide eliminar perfiles asignados.
+
+Un escaneo completo actualiza la presencia de los repositorios de su raíz. Conserva las excepciones de los repositorios ausentes para poder retirarlas desde GitPilot. Un escaneo parcial agrega o actualiza los resultados verificados y conserva las pertenencias anteriores. Guardar un escaneo requiere que la revisión de la raíz coincida con la capturada al inicio.
 
 El plan liga revisiones y huellas de todos los archivos relevantes, incluidas las dependencias externas que afectan la verificación. Confirmar una operación actualiza el estado aplicado en SQLite solo después de verificar con Git. Conservar el snapshot necesario para interpretar un estado aplicado incluso si el perfil ya tiene un borrador distinto. Recuperar o revertir antes de admitir otra escritura tras una interrupción.
 

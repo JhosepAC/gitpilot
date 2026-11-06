@@ -52,3 +52,7 @@ Infraestructura implementada y verificada en Windows y Linux. La aplicación abr
 ## Estado de la fase 2
 
 La pantalla Identidades permite administrar perfiles persistidos, elegir un predeterminado e importar la identidad global de Git mediante un borrador revisable. Las [pruebas](testing/TESTING.md#evidencia-de-fase-2) registran la validación en Windows y Linux. La fase 3 incorpora directorios, repositorios y asignaciones de identidad.
+
+## Estado de la fase 3
+
+La pantalla Directorios registra raíces, descubre repositorios bajo demanda y admite exclusiones. Conserva los resultados anteriores cuando el escaneo es parcial. La identidad esperada se calcula con la excepción del repositorio, la regla del ancestro más específico o el predeterminado dentro del inventario. El diagnóstico muestra las discrepancias, el origen de cada valor de Git y el autor y committer que Git devuelve para el contexto de la aplicación. Las reglas se guardan en SQLite. La fase 4 materializará los cambios de configuración previa revisión y confirmación. [Validaciones](testing/TESTING.md#evidencia-de-fase-3)
