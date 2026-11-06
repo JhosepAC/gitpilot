@@ -34,6 +34,8 @@ Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de c
 
 **Inicio y Actividad.** Inicio muestra la versión de Git y permite retomar los pasos para guardar perfiles, registrar directorios y revisar la configuración. Actividad ordena decisiones y operaciones recientes por fecha, distingue el ámbito global del repositorio y abre el destino de cada operación activa. El diagnóstico ofrece conservar una discrepancia y, cuando corresponde, abrir la vista previa del archivo local.
 
+**Inspector de Git.** Desde el detalle de un repositorio presente, el Inspector abre la rama y el índice primero. Luego muestra los remotos y separa el acceso SSH, el acceso HTTPS y la firma de commits. Volver conserva la selección y devuelve el foco al botón de entrada.
+
 **Ventana.** El área de trabajo es fija de 900 × 600 píxeles lógicos, con minimizar y cerrar mediante los controles nativos. La lista y el detalle se desplazan de forma independiente. El diseño reorganiza los paneles cuando el zoom reduce el espacio de contenido.
 
 ## Criterios visuales y de accesibilidad

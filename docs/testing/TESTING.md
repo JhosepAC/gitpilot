@@ -92,3 +92,9 @@ En Windows 11 x86_64 con Git 2.55.0.windows.5 y Debian 12 amd64 con Git 2.39.5 p
 | M6 | Se restauraron los archivos global y local desde Actividad y se compararon los bytes. Las pruebas Rust cubren la interrupción simulada y la protección de una edición externa. |
 
 Los artefactos de esta entrega son candidatos locales. La firma de los instaladores y la publicación formal quedan pendientes.
+
+## Evidencia de fase 5 · Inspector local
+
+- En Windows 11 x86_64 con Git 2.55.0.windows.5 y Debian 12 amd64 con Git 2.39.5 pasaron Prettier, ESLint, TypeScript, cuatro pruebas Vitest, formato Rust, Clippy con avisos como errores, diecisiete pruebas Rust y compilación Tauri.
+- Los fixtures de Git comprobaron la rama, el índice y los destinos de lectura y envío, incluida la reescritura de URL. Los comandos configurados para filtros, monitores, SSH, credenciales y firma quedaron sin ejecutar. Los valores señuelo permanecieron fuera de la respuesta y se compararon los bytes del índice y la configuración.
+- En WebView2 y WebKitGTK se abrió el Inspector en la ventana de 900 × 600. Se revisaron el host sin credenciales, un alias SSH simple, la presencia de claves, los helpers HTTPS y la configuración de firma. En Windows se verificó el retorno de foco. En Debian se comprobó la presencia del archivo de firma SSH a partir de sus metadatos.

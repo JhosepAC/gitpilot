@@ -12,6 +12,8 @@ Cuando la vista previa se puede verificar, elige **Revisar aplicación** y confi
 
 **Inicio** comprueba Git y guía la creación o importación de perfiles y el registro de carpetas. En el diagnóstico de un repositorio, puedes registrar que quieres conservar el valor actual o revisar un cambio local compatible. **Actividad** muestra esas decisiones y el estado de las escrituras. Desde allí puedes revisar una restauración global o local.
 
+En un repositorio del inventario, **Abrir Inspector** muestra la rama, el estado del índice, los destinos de lectura y envío y los diagnósticos locales de SSH, HTTPS y firma. Para los remotos se muestran el transporte y el host. La identidad de commit se sigue consultando en el detalle del repositorio.
+
 ## Ejecutar en desarrollo
 
 Instala Node.js 24, npm y Rust mediante rustup. El archivo `rust-toolchain.toml` selecciona Rust y sus componentes de formato y lint.
