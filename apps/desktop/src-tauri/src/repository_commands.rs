@@ -4,9 +4,24 @@ use tauri::State;
 use crate::{
     application::Foundation,
     error::StorageError,
-    infrastructure::{discovery, inventory},
+    infrastructure::{config_preview, discovery, inventory},
     repository::{Directory, DirectoryInventory, IdentityDiagnosis, InventoryError, ScanReport},
 };
+
+#[tauri::command]
+pub(crate) async fn preview_native_config(
+    foundation: State<'_, Foundation>,
+) -> Result<config_preview::ConfigPreview, InventoryError> {
+    let _guard = foundation
+        .inventory_scan
+        .try_lock()
+        .map_err(|_| InventoryError::ScanInProgress)?;
+    let app_data = foundation
+        .directory
+        .as_deref()
+        .ok_or(InventoryError::StorageUnavailable)?;
+    config_preview::prepare(foundation.database()?, app_data).await
+}
 
 impl From<StorageError> for InventoryError {
     fn from(_: StorageError) -> Self {

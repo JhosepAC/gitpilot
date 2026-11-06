@@ -3,5 +3,5 @@
   "identifier": "main-window",
   "description": "Local main window for storage readiness and identity management",
   "windows": ["main"],
-  "permissions": ["allow-foundation-status", "allow-manage-identities", "allow-manage-inventory"]
+  "permissions": ["allow-foundation-status", "allow-manage-identities", "allow-manage-inventory", "allow-preview-native-config"]
 }

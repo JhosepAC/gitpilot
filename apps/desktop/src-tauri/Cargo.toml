@@ -17,9 +17,7 @@ tauri-build = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 tauri = { version = "2", features = [] }
+tempfile = "3"
 tokio = { version = "1", features = ["fs", "io-util", "process", "sync", "time"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
-
-[dev-dependencies]
-tempfile = "3"

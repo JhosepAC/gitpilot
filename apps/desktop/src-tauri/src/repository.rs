@@ -68,7 +68,7 @@ pub(crate) struct ObservedIdentity {
     pub(crate) committer: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, PartialEq, Eq)]
 pub(crate) struct ConfigValue {
     pub(crate) value: String,
     pub(crate) scope: String,

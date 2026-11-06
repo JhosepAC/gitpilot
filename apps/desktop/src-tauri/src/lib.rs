@@ -41,6 +41,7 @@ pub fn run() -> tauri::Result<()> {
             repository_commands::scan_directory,
             repository_commands::set_inventory_identity,
             repository_commands::diagnose_repository,
+            repository_commands::preview_native_config,
         ])
         .run(tauri::generate_context!())
 }

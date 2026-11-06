@@ -1,0 +1,741 @@
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    env,
+    path::{Path, PathBuf},
+    time::Duration,
+};
+
+use serde::Serialize;
+use sqlx::SqlitePool;
+use tokio::fs;
+
+use crate::repository::{InventoryError, ObservedIdentity, Repository};
+
+use super::{discovery, git};
+
+const PREVIEW_LIMIT: usize = 80;
+const GIT_TIME: Duration = Duration::from_secs(2);
+
+#[derive(Clone, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+struct Profile {
+    id: i64,
+    revision: i64,
+    label: String,
+    git_name: String,
+    email: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct Root {
+    path: String,
+    scan_partial: Option<bool>,
+    identity_id: Option<i64>,
+}
+
+struct Policy {
+    roots: Vec<Root>,
+    repositories: Vec<Repository>,
+    profiles: BTreeMap<i64, Profile>,
+    default_id: Option<i64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Rule {
+    path: String,
+    source: &'static str,
+    pattern: String,
+    profile: Profile,
+    profile_path: String,
+}
+
+#[derive(Serialize)]
+struct Finding {
+    code: &'static str,
+    path: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Comparison {
+    path: String,
+    expected: Option<String>,
+    current: ObservedIdentity,
+    proposed: ObservedIdentity,
+    result: &'static str,
+}
+
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConfigPreview {
+    git_version: String,
+    global_path: Option<String>,
+    global_append: Option<String>,
+    manifest_path: String,
+    rules: Vec<Rule>,
+    comparisons: Vec<Comparison>,
+    findings: Vec<Finding>,
+}
+
+impl ConfigPreview {
+    fn warn(&mut self, code: &'static str, path: Option<&str>) {
+        self.findings.push(Finding {
+            code,
+            path: path.map(str::to_owned),
+        });
+    }
+}
+
+async fn snapshot(pool: &SqlitePool) -> Result<Policy, InventoryError> {
+    let mut tx = pool.begin().await?;
+    let roots = sqlx::query_as(
+        "SELECT d.path, d.scan_partial, r.identity_id FROM directories d
+         LEFT JOIN identity_rules r ON r.directory_id = d.id ORDER BY d.path",
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let repositories = sqlx::query_as(
+        "SELECT p.id, p.path, p.kind, p.git_dir, p.common_dir, p.revision, r.identity_id,
+                EXISTS (SELECT 1 FROM directory_repositories dr WHERE dr.repository_id = p.id
+                        AND dr.present = 1) AS present
+         FROM repositories p LEFT JOIN identity_rules r ON r.repository_id = p.id ORDER BY p.path",
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let profiles: Vec<Profile> =
+        sqlx::query_as("SELECT id, revision, label, git_name, email FROM identities")
+            .fetch_all(&mut *tx)
+            .await?;
+    let default_id = sqlx::query_scalar("SELECT id FROM identities WHERE is_default = 1")
+        .fetch_optional(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(Policy {
+        roots,
+        repositories,
+        profiles: profiles.into_iter().map(|p| (p.id, p)).collect(),
+        default_id,
+    })
+}
+
+fn git_path(path: &Path) -> Option<String> {
+    let value = path.to_str()?;
+    if !path.is_absolute() || value.chars().any(char::is_control) {
+        return None;
+    }
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        if !matches!(path.components().next(), Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_)))
+        {
+            return None;
+        }
+        Some(value.replace('\\', "/"))
+    }
+    #[cfg(not(windows))]
+    Some(value.to_owned())
+}
+
+fn literal_gitdir(path: &Path) -> Option<String> {
+    let mut pattern = String::from("gitdir:");
+    for character in git_path(path)?.chars() {
+        match character {
+            '[' => pattern.push_str("[[]"),
+            '*' => pattern.push_str("[*]"),
+            '?' => pattern.push_str("[?]"),
+            '\\' => pattern.push_str(r"\\"),
+            _ => pattern.push(character),
+        }
+    }
+    Some(pattern)
+}
+
+fn plan_rules(policy: &Policy, native: &Path, preview: &mut ConfigPreview) {
+    let mut roots: Vec<_> = policy.roots.iter().collect();
+    roots.sort_by_key(|root| Path::new(&root.path).components().count());
+    for root in roots {
+        let path = Path::new(&root.path);
+        let inherited = policy.roots.iter().any(|other| {
+            other.identity_id.is_some() && other.path != root.path && path.starts_with(&other.path)
+        });
+        let choice = match root.identity_id {
+            Some(id) => Some((id, "directory")),
+            None if !inherited => policy.default_id.map(|id| (id, "default")),
+            None => None,
+        };
+        if let Some((id, source)) = choice {
+            if path.parent().is_none() {
+                preview.warn("unsupported_path", Some(&root.path));
+                continue;
+            }
+            if root.scan_partial != Some(false) {
+                preview.warn("unverified_directory", Some(&root.path));
+            }
+            add_rule(policy, native, preview, &root.path, path, id, source);
+        }
+    }
+    for repo in &policy.repositories {
+        if let Some(id) = repo.identity_id {
+            let path = Path::new(&repo.path);
+            let git_dir = Path::new(&repo.git_dir);
+            if repo.present && repo.kind == "ordinary" && path.join(".git") == git_dir {
+                add_rule(
+                    policy,
+                    native,
+                    preview,
+                    &repo.path,
+                    git_dir,
+                    id,
+                    "repository",
+                );
+            } else {
+                preview.warn("unsupported_exception", Some(&repo.path));
+            }
+        }
+    }
+}
+
+fn add_rule(
+    policy: &Policy,
+    native: &Path,
+    preview: &mut ConfigPreview,
+    path: &str,
+    match_path: &Path,
+    id: i64,
+    source: &'static str,
+) {
+    let Some(mut pattern) = literal_gitdir(match_path) else {
+        preview.warn("unsupported_path", Some(path));
+        return;
+    };
+    if source != "repository" {
+        if !pattern.ends_with('/') {
+            pattern.push('/');
+        }
+        pattern.push_str("**/.git");
+    }
+    if let Some(profile) = policy.profiles.get(&id) {
+        preview.rules.push(Rule {
+            path: path.into(),
+            source,
+            pattern,
+            profile: profile.clone(),
+            profile_path: native
+                .join(profile_filename(profile))
+                .to_string_lossy()
+                .into_owned(),
+        });
+    }
+}
+
+fn profile_filename(profile: &Profile) -> String {
+    format!("profile-{}-{}.config", profile.id, profile.revision)
+}
+
+fn quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn include(path: &str) -> String {
+    format!("[include]\n\tpath = {}\n", quote(path))
+}
+
+fn profile_config(profile: &Profile) -> String {
+    format!(
+        "[user]\n\tname = {}\n\temail = {}\n",
+        quote(&profile.git_name),
+        quote(&profile.email)
+    )
+}
+
+async fn git_line(executable: &Path, cwd: &Path, args: &[&str]) -> Option<String> {
+    let mut command = git::command(executable, cwd);
+    let (status, bytes) = git::output(command.args(args), GIT_TIME).await.ok()?;
+    let output = String::from_utf8(bytes).ok()?;
+    let line = output.trim_end_matches(['\r', '\n']);
+    (status.success() && !line.is_empty() && !line.chars().any(char::is_control))
+        .then(|| line.into())
+}
+
+fn compatible(version: &str) -> bool {
+    let Some(version) = version.strip_prefix("git version ") else {
+        return false;
+    };
+    let mut parts = version
+        .split('.')
+        .map_while(|part| part.parse::<u32>().ok());
+    matches!((parts.next(), parts.next(), parts.next()), (Some(a), Some(b), Some(c)) if (a, b, c) >= (2, 39, 5))
+}
+
+struct GlobalFiles {
+    destination: PathBuf,
+    existing: Vec<PathBuf>,
+}
+
+async fn global_files(home: &Path, xdg: &Path) -> Option<GlobalFiles> {
+    let mut existing = Vec::new();
+    for candidate in [xdg, home] {
+        git_path(candidate)?;
+        match fs::symlink_metadata(candidate).await {
+            Ok(meta) if meta.file_type().is_file() => {
+                let actual = fs::canonicalize(candidate).await.ok()?;
+                #[cfg(windows)]
+                let actual = windows_display_path(&actual);
+                if actual != candidate {
+                    return None;
+                }
+                existing.push(candidate.to_owned());
+            }
+            Ok(_) => return None,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return None,
+        }
+    }
+    Some(GlobalFiles {
+        destination: existing
+            .last()
+            .map_or_else(|| home.to_owned(), PathBuf::clone),
+        existing,
+    })
+}
+
+#[cfg(windows)]
+fn windows_display_path(path: &Path) -> PathBuf {
+    path.to_str()
+        .and_then(|path| path.strip_prefix(r"\\?\"))
+        .map_or_else(|| path.to_owned(), PathBuf::from)
+}
+
+async fn simulation(
+    rules: &[Rule],
+    files: &GlobalFiles,
+    scratch: &Path,
+) -> Result<PathBuf, InventoryError> {
+    let mut manifest = String::new();
+    for rule in rules {
+        let filename = profile_filename(&rule.profile);
+        fs::write(scratch.join(&filename), profile_config(&rule.profile))
+            .await
+            .map_err(|_| InventoryError::StorageUnavailable)?;
+        manifest.push_str(&format!(
+            "[includeIf {}]\n\tpath = {}\n",
+            quote(&rule.pattern),
+            quote(&filename)
+        ));
+    }
+    let mut global = String::new();
+    for path in &files.existing {
+        global.push_str(&include(
+            &git_path(path).ok_or(InventoryError::InvalidPath)?,
+        ));
+    }
+    global.push_str(&include("active.config"));
+    let path = scratch.join("global.config");
+    fs::write(scratch.join("active.config"), manifest)
+        .await
+        .map_err(|_| InventoryError::StorageUnavailable)?;
+    fs::write(&path, global)
+        .await
+        .map_err(|_| InventoryError::StorageUnavailable)?;
+    Ok(path)
+}
+
+fn expected_rule<'a>(repo: &Repository, rules: &'a [Rule]) -> Option<&'a Rule> {
+    rules.iter().rev().find(|rule| {
+        if rule.source == "repository" {
+            rule.path == repo.path
+        } else {
+            Path::new(&repo.path).starts_with(&rule.path)
+        }
+    })
+}
+
+async fn compare(
+    executable: &Path,
+    path: &Path,
+    global: &Path,
+    expected: Option<&Profile>,
+    ordinary: bool,
+) -> Result<Comparison, InventoryError> {
+    let current = discovery::read_config(executable, path, None).await?;
+    let proposed = discovery::read_config(executable, path, Some(global)).await?;
+    let same = current.name == proposed.name && current.email == proposed.email;
+    let matches = expected.is_some_and(|profile| {
+        proposed
+            .name
+            .as_ref()
+            .is_some_and(|field| field.value == profile.git_name)
+            && proposed
+                .email
+                .as_ref()
+                .is_some_and(|field| field.value == profile.email)
+    });
+    let result = match (ordinary, expected, same, matches) {
+        (false, _, false, _) | (true, None, false, _) => "unexpected",
+        (false, _, true, _) => "diagnostic_only",
+        (_, None, _, _) => "unchanged",
+        (_, Some(_), _, true) => "matches",
+        (_, Some(_), _, false) => "conflict",
+    };
+    Ok(Comparison {
+        path: path.to_string_lossy().into_owned(),
+        expected: expected.map(|profile| profile.label.clone()),
+        current,
+        proposed,
+        result,
+    })
+}
+
+async fn worktrees(executable: &Path, path: &Path) -> Result<Vec<String>, InventoryError> {
+    let mut command = git::command(executable, path);
+    command.args(["worktree", "list", "--porcelain", "-z"]);
+    let (status, output) = git::output(&mut command, GIT_TIME)
+        .await
+        .map_err(|_| InventoryError::GitReadFailed)?;
+    let text = std::str::from_utf8(&output).map_err(|_| InventoryError::GitReadFailed)?;
+    let mut paths = text
+        .split_terminator('\0')
+        .filter_map(|part| part.strip_prefix("worktree "));
+    if !status.success() || paths.next().is_none() {
+        return Err(InventoryError::GitReadFailed);
+    }
+    Ok(paths.map(str::to_owned).collect())
+}
+
+fn project_origins(result: &mut Comparison, simulated_paths: &BTreeMap<String, &str>) {
+    for item in [&mut result.proposed.name, &mut result.proposed.email]
+        .into_iter()
+        .flatten()
+    {
+        let original = item
+            .origin
+            .strip_prefix("file:")
+            .and_then(|path| git_path(Path::new(path)));
+        if let Some(path) = original
+            .as_ref()
+            .and_then(|origin| simulated_paths.get(origin))
+        {
+            item.origin = format!("file:{path}");
+        }
+    }
+}
+
+pub(crate) async fn prepare(
+    pool: &SqlitePool,
+    app_data: &Path,
+) -> Result<ConfigPreview, InventoryError> {
+    let executable = git::executable().ok_or(InventoryError::GitUnavailable)?;
+    let git_version = git_line(&executable, app_data, &["--version"])
+        .await
+        .ok_or(InventoryError::GitReadFailed)?;
+    let native = app_data.join("native");
+    let mut preview = ConfigPreview {
+        git_version,
+        manifest_path: native.join("active.config").to_string_lossy().into_owned(),
+        ..ConfigPreview::default()
+    };
+    let policy = snapshot(pool).await?;
+    plan_rules(&policy, &native, &mut preview);
+    if !compatible(&preview.git_version) {
+        preview.warn("unsupported_git", None);
+        return Ok(preview);
+    }
+    if [
+        "GIT_CONFIG_GLOBAL",
+        "GIT_CONFIG",
+        "GIT_CONFIG_COUNT",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_DIR",
+        "GIT_COMMON_DIR",
+        "GIT_WORK_TREE",
+    ]
+    .iter()
+    .any(|name| env::var_os(name).is_some_and(|value| !value.is_empty()))
+    {
+        preview.warn("redirected_config", None);
+        return Ok(preview);
+    }
+    let Some(home_config) = git_line(
+        &executable,
+        app_data,
+        &[
+            "-c",
+            "gitpilot.home=~/.gitconfig",
+            "config",
+            "--path",
+            "--get",
+            "gitpilot.home",
+        ],
+    )
+    .await
+    .map(PathBuf::from) else {
+        preview.warn("unknown_global", None);
+        return Ok(preview);
+    };
+    let Some(home) = home_config.parent() else {
+        preview.warn("unknown_global", None);
+        return Ok(preview);
+    };
+    let xdg = env::var_os("XDG_CONFIG_HOME")
+        .filter(|value| !value.is_empty())
+        .map_or_else(|| home.join(".config"), PathBuf::from)
+        .join("git")
+        .join("config");
+    let Some(files) = tokio::time::timeout(GIT_TIME, global_files(&home_config, &xdg))
+        .await
+        .ok()
+        .flatten()
+    else {
+        preview.warn("unknown_global", None);
+        return Ok(preview);
+    };
+    preview.global_path = files.destination.to_str().map(str::to_owned);
+    if preview.rules.is_empty() {
+        return Ok(preview);
+    }
+    preview.global_append = git_path(&native.join("active.config")).map(|path| include(&path));
+    let scratch = tempfile::Builder::new()
+        .prefix("native-preview-")
+        .tempdir_in(app_data)
+        .map_err(|_| InventoryError::StorageUnavailable)?;
+    let global = simulation(&preview.rules, &files, scratch.path()).await?;
+    let simulated_paths: BTreeMap<_, _> = preview
+        .rules
+        .iter()
+        .filter_map(|rule| {
+            git_path(&scratch.path().join(profile_filename(&rule.profile)))
+                .map(|origin| (origin, rule.profile_path.as_str()))
+        })
+        .collect();
+    let mut comparisons = Vec::new();
+    let mut findings = Vec::new();
+    let mut extra_worktrees = BTreeSet::new();
+    let finished = tokio::time::timeout(Duration::from_secs(15), async {
+        for (index, repo) in policy
+            .repositories
+            .iter()
+            .filter(|repo| repo.present)
+            .enumerate()
+        {
+            if index == PREVIEW_LIMIT {
+                findings.push(("comparison_limit", None));
+                break;
+            }
+            let path = Path::new(&repo.path);
+            let valid = discovery::directory_path(path)
+                .await
+                .is_ok_and(|canonical| canonical == repo.path);
+            let git_dir = git_line(&executable, path, &["rev-parse", "--absolute-git-dir"]).await;
+            let same_git_dir = git_dir
+                .and_then(|value| git_path(Path::new(&value)))
+                .is_some_and(|value| Some(value) == git_path(Path::new(&repo.git_dir)));
+            let ordinary = repo.kind == "ordinary";
+            let expected = expected_rule(repo, &preview.rules).map(|rule| &rule.profile);
+            if valid && same_git_dir {
+                if let Ok(mut result) =
+                    compare(&executable, path, &global, expected, ordinary).await
+                {
+                    project_origins(&mut result, &simulated_paths);
+                    comparisons.push(result);
+                    if repo.kind != "worktree" {
+                        match worktrees(&executable, path).await {
+                            Ok(paths) => extra_worktrees.extend(paths),
+                            Err(_) => {
+                                findings.push(("unverified_worktree", Some(repo.path.clone())))
+                            }
+                        }
+                    }
+                    continue;
+                }
+            }
+            findings.push(("unverified_repository", Some(repo.path.clone())));
+        }
+        for reported in extra_worktrees {
+            if comparisons.len() >= PREVIEW_LIMIT {
+                findings.push(("comparison_limit", None));
+                break;
+            }
+            let Ok(path) = discovery::directory_path(Path::new(&reported)).await else {
+                findings.push(("unverified_worktree", git_path(Path::new(&reported))));
+                continue;
+            };
+            if comparisons.iter().any(|result| result.path == path) {
+                continue;
+            }
+            match compare(&executable, Path::new(&path), &global, None, false).await {
+                Ok(mut result) => {
+                    project_origins(&mut result, &simulated_paths);
+                    comparisons.push(result);
+                }
+                Err(_) => findings.push(("unverified_worktree", Some(path))),
+            }
+        }
+    })
+    .await;
+    if finished.is_err() && !findings.iter().any(|(code, _)| *code == "comparison_limit") {
+        findings.push(("comparison_limit", None));
+    }
+    findings.sort_unstable();
+    findings.dedup();
+    preview.comparisons = comparisons;
+    preview.findings.extend(
+        findings
+            .into_iter()
+            .map(|(code, path)| Finding { code, path }),
+    );
+    Ok(preview)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile(id: i64, label: &str) -> Profile {
+        Profile {
+            id,
+            revision: 1,
+            label: label.into(),
+            git_name: format!(r#"{label} "Fixture"\Git"#),
+            email: format!("{id}@example.test"),
+        }
+    }
+
+    async fn fixture_git(executable: &Path, cwd: &Path, global: &Path, args: &[&str]) {
+        let mut command = git::command(executable, cwd);
+        command
+            .env("GIT_CONFIG_GLOBAL", global)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .args(args);
+        let (status, _) = git::output(&mut command, Duration::from_secs(6))
+            .await
+            .unwrap();
+        assert!(status.success(), "fixture Git failed: {args:?}");
+    }
+
+    #[test]
+    fn native_simulation_preserves_precedence_and_original_files() {
+        tauri::async_runtime::block_on(async {
+            let executable = git::executable().unwrap();
+            let temp = tempfile::tempdir().unwrap();
+            let base = PathBuf::from(discovery::directory_path(temp.path()).await.unwrap());
+            let home = base.join(".gitconfig");
+            let xdg = base.join("xdg").join("config");
+            let relative = base.join("base.config");
+            let original_home = include("base.config");
+            fs::write(&home, &original_home).await.unwrap();
+            fs::write(&relative, "[user]\nemail = original@example.test\n")
+                .await
+                .unwrap();
+            let files = global_files(&home, &xdg).await.unwrap();
+            assert_eq!(files.destination, home);
+            let parent = base.join("Equipo [local]");
+            let child = parent.join("Anidado");
+            let direct = parent.join("directo");
+            let inherited = child.join("nuevo");
+            let override_path = child.join("excepción");
+            let outside = base.join("Equipo local").join("otro");
+            let fallback = base.join("Personal");
+            for path in [&direct, &inherited, &override_path, &outside, &fallback] {
+                fs::create_dir_all(path).await.unwrap();
+                fixture_git(&executable, path, &home, &["init", "--quiet"]).await;
+            }
+            let path_text = |path: &Path| path.to_str().unwrap().to_owned();
+            let policy = Policy {
+                roots: [(&parent, Some(1)), (&child, None), (&fallback, None)]
+                    .map(|(path, identity_id)| Root {
+                        path: path_text(path),
+                        identity_id,
+                        scan_partial: Some(false),
+                    })
+                    .into(),
+                repositories: vec![Repository {
+                    id: 1,
+                    path: path_text(&override_path),
+                    kind: "ordinary".into(),
+                    git_dir: path_text(&override_path.join(".git")),
+                    common_dir: path_text(&override_path.join(".git")),
+                    present: true,
+                    revision: 1,
+                    identity_id: Some(3),
+                }],
+                profiles: [(1, "Equipo"), (2, "Predeterminada"), (3, "Excepción")]
+                    .map(|(id, label)| (id, profile(id, label)))
+                    .into(),
+                default_id: Some(2),
+            };
+            let scratch = base.join("scratch");
+            fs::create_dir(&scratch).await.unwrap();
+            let mut preview = ConfigPreview::default();
+            plan_rules(&policy, &scratch, &mut preview);
+            assert_eq!(preview.rules.len(), 3);
+            assert!(preview.findings.is_empty());
+            assert!(preview
+                .rules
+                .last()
+                .unwrap()
+                .pattern
+                .ends_with("/excepción/.git"));
+            let global = simulation(&preview.rules, &files, &scratch).await.unwrap();
+            for (path, expected) in [
+                (&direct, "1@example.test"),
+                (&inherited, "1@example.test"),
+                (&override_path, "3@example.test"),
+                (&outside, "original@example.test"),
+                (&fallback, "2@example.test"),
+            ] {
+                let result = discovery::read_config(&executable, path, Some(&global))
+                    .await
+                    .unwrap();
+                assert_eq!(result.email.unwrap().value, expected, "{path:?}");
+                if path == &direct {
+                    assert_eq!(result.name.unwrap().value, policy.profiles[&1].git_name);
+                }
+            }
+            fixture_git(
+                &executable,
+                &inherited,
+                &home,
+                &["config", "--local", "user.email", "local@example.test"],
+            )
+            .await;
+            let local = inherited.join(".git").join("config");
+            let before = fs::read(&local).await.unwrap();
+            let result = discovery::read_config(&executable, &inherited, Some(&global))
+                .await
+                .unwrap();
+            assert_eq!(result.name.unwrap().scope, "global");
+            let email = result.email.unwrap();
+            assert_eq!(email.value, "local@example.test");
+            assert_eq!(email.scope, "local");
+            assert!(worktrees(&executable, &inherited).await.unwrap().is_empty());
+            assert_eq!(fs::read(&local).await.unwrap(), before);
+            assert_eq!(fs::read_to_string(&home).await.unwrap(), original_home);
+            assert_eq!(
+                fs::read_to_string(&relative).await.unwrap(),
+                "[user]\nemail = original@example.test\n"
+            );
+        });
+    }
+
+    #[test]
+    fn selects_the_last_available_global_file_and_checks_git_version() {
+        assert!(compatible("git version 2.55.0.windows.5"));
+        assert!(compatible("git version 2.39.5"));
+        assert!(!compatible("git version 2.39.4"));
+        tauri::async_runtime::block_on(async {
+            let temp = tempfile::tempdir().unwrap();
+            let base = PathBuf::from(discovery::directory_path(temp.path()).await.unwrap());
+            let home = base.join(".gitconfig");
+            let xdg = base.join("config");
+            assert_eq!(global_files(&home, &xdg).await.unwrap().destination, home);
+            fs::write(&xdg, "[user]\n").await.unwrap();
+            assert_eq!(global_files(&home, &xdg).await.unwrap().destination, xdg);
+            fs::write(&home, "[user]\n").await.unwrap();
+            assert_eq!(
+                global_files(&home, &xdg).await.unwrap().existing,
+                [xdg, home]
+            );
+        });
+    }
+}

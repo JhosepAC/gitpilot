@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-preview-native-config"
+description = "Simulate Git identity configuration without changing Git files"
+commands.allow = ["preview_native_config"]

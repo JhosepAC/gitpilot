@@ -300,24 +300,7 @@ pub(crate) async fn observe(path: &str, git_dir: &str) -> Result<ObservedIdentit
     {
         return Err(InventoryError::GitReadFailed);
     }
-    let (status, output) = read(
-        &executable,
-        directory,
-        deadline,
-        &[
-            "config",
-            "--null",
-            "--show-scope",
-            "--show-origin",
-            "--get-regexp",
-            r"^user\.(name|email)$",
-        ],
-    )
-    .await?;
-    if !status.success() && (status.code() != Some(1) || !output.is_empty()) {
-        return Err(InventoryError::GitReadFailed);
-    }
-    let mut observed = parse_config(&output)?;
+    let mut observed = read_config(&executable, directory, None).await?;
     for (key, slot) in [
         ("GIT_AUTHOR_IDENT", &mut observed.author),
         ("GIT_COMMITTER_IDENT", &mut observed.committer),
@@ -331,6 +314,32 @@ pub(crate) async fn observe(path: &str, git_dir: &str) -> Result<ObservedIdentit
         }
     }
     Ok(observed)
+}
+
+pub(super) async fn read_config(
+    executable: &Path,
+    directory: &Path,
+    simulated_global: Option<&Path>,
+) -> Result<ObservedIdentity, InventoryError> {
+    let mut command = git::command(executable, directory);
+    if let Some(global) = simulated_global {
+        command.env("GIT_CONFIG_GLOBAL", global);
+    }
+    command.args([
+        "config",
+        "--null",
+        "--show-scope",
+        "--show-origin",
+        "--get-regexp",
+        r"^user\.(name|email)$",
+    ]);
+    let (status, output) = git::output(&mut command, GIT_TIME)
+        .await
+        .map_err(|_| InventoryError::GitReadFailed)?;
+    if !status.success() && (status.code() != Some(1) || !output.is_empty()) {
+        return Err(InventoryError::GitReadFailed);
+    }
+    parse_config(std::str::from_utf8(&output).map_err(|_| InventoryError::GitReadFailed)?)
 }
 
 fn safe_value(value: &str) -> Option<String> {

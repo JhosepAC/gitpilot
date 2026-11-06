@@ -1,3 +1,4 @@
+pub(crate) mod config_preview;
 pub(crate) mod discovery;
 pub(crate) mod git;
 pub(crate) mod git_identity;
