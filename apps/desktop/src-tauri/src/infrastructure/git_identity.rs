@@ -1,86 +1,41 @@
-use std::{env, path::Path, process::Stdio, time::Duration};
+use std::{path::Path, time::Duration};
 
-use tokio::{io::AsyncReadExt, process::Command, time::timeout};
+use tokio::process::Command;
 
 use crate::identity::{IdentityError, IdentityInput};
 
+use super::git;
+
 pub(crate) async fn detect(directory: &Path) -> Result<IdentityInput, IdentityError> {
-    let path = env::var_os("PATH").ok_or(IdentityError::GitUnavailable)?;
-    let executable = env::split_paths(&path)
-        .filter(|directory| directory.is_absolute())
-        .map(|directory| directory.join(if cfg!(windows) { "git.exe" } else { "git" }))
-        .find(|file| file.is_file())
-        .ok_or(IdentityError::GitUnavailable)?;
-    let mut command = Command::new(executable);
-    command.current_dir(directory);
-    for key in [
-        "GIT_DIR",
-        "GIT_COMMON_DIR",
-        "GIT_WORK_TREE",
-        "GIT_CONFIG",
-        "GIT_CONFIG_COUNT",
-        "GIT_CONFIG_PARAMETERS",
-    ] {
-        command.env_remove(key);
-    }
-    for (key, _) in env::vars_os() {
-        if key
-            .to_string_lossy()
-            .to_ascii_uppercase()
-            .starts_with("GIT_TRACE")
-        {
-            command.env_remove(key);
-        }
-    }
-    read_global_identity(&mut command).await
+    let executable = git::executable().ok_or(IdentityError::GitUnavailable)?;
+    read_global_identity(&mut git::command(&executable, directory)).await
 }
 
 async fn read_global_identity(command: &mut Command) -> Result<IdentityInput, IdentityError> {
-    const OUTPUT_LIMIT: u64 = 16_384;
-
-    #[cfg(windows)]
-    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    let mut child = command
-        .args([
-            "--no-pager",
-            "config",
-            "--global",
-            "--includes",
-            "--null",
-            "--get-regexp",
-            r"^user\.(name|email)$",
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|_| IdentityError::GitUnavailable)?;
-    timeout(Duration::from_secs(3), async {
-        let stdout = child.stdout.take().ok_or(IdentityError::GitReadFailed)?;
-        let mut output = Vec::new();
-        stdout
-            .take(OUTPUT_LIMIT + 1)
-            .read_to_end(&mut output)
-            .await
-            .map_err(|_| IdentityError::GitReadFailed)?;
-        if output.len() as u64 > OUTPUT_LIMIT {
-            return Err(IdentityError::GitReadFailed);
-        }
-        let status = child
-            .wait()
-            .await
-            .map_err(|_| IdentityError::GitReadFailed)?;
-        if status.code() == Some(1) && output.is_empty() {
-            return Err(IdentityError::GitIdentityMissing);
-        }
-        if !status.success() {
-            return Err(IdentityError::GitReadFailed);
-        }
-        parse_identity(&output)
-    })
-    .await
-    .map_err(|_| IdentityError::GitReadFailed)?
+    command.args([
+        "config",
+        "--global",
+        "--includes",
+        "--null",
+        "--get-regexp",
+        r"^user\.(name|email)$",
+    ]);
+    let (status, output) = git::output(command, Duration::from_secs(3))
+        .await
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                IdentityError::GitUnavailable
+            } else {
+                IdentityError::GitReadFailed
+            }
+        })?;
+    if status.code() == Some(1) && output.is_empty() {
+        return Err(IdentityError::GitIdentityMissing);
+    }
+    if !status.success() || output.len() > 16_384 {
+        return Err(IdentityError::GitReadFailed);
+    }
+    parse_identity(&output)
 }
 
 fn parse_identity(output: &[u8]) -> Result<IdentityInput, IdentityError> {

@@ -3,6 +3,8 @@ mod commands;
 mod error;
 mod identity;
 mod infrastructure;
+mod repository;
+mod repository_commands;
 
 use tauri::Manager;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt, Layer};
@@ -31,6 +33,14 @@ pub fn run() -> tauri::Result<()> {
             commands::set_identity_default,
             commands::delete_identity,
             commands::detect_git_identity,
+            repository_commands::list_directories,
+            repository_commands::add_directory,
+            repository_commands::remove_directory,
+            repository_commands::list_directory_contents,
+            repository_commands::set_directory_exclusion,
+            repository_commands::scan_directory,
+            repository_commands::set_inventory_identity,
+            repository_commands::diagnose_repository,
         ])
         .run(tauri::generate_context!())
 }

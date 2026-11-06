@@ -17,6 +17,7 @@ pub(crate) struct Identity {
     pub(crate) email: String,
     pub(crate) is_default: bool,
     pub(crate) revision: i64,
+    pub(crate) assignment_count: i64,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]

@@ -1,0 +1,13 @@
+[[permission]]
+identifier = "allow-manage-inventory"
+description = "Manage local inventory and inspect Git repositories"
+commands.allow = [
+    "list_directories",
+    "add_directory",
+    "remove_directory",
+    "list_directory_contents",
+    "set_directory_exclusion",
+    "scan_directory",
+    "set_inventory_identity",
+    "diagnose_repository",
+]

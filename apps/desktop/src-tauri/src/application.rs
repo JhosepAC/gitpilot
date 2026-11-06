@@ -7,6 +7,7 @@ use crate::{error::StorageError, infrastructure::storage};
 pub(crate) struct Foundation {
     database: Result<SqlitePool, StorageError>,
     pub(crate) directory: Option<PathBuf>,
+    pub(crate) inventory_scan: tokio::sync::Mutex<()>,
 }
 
 impl Foundation {
@@ -23,6 +24,7 @@ impl Foundation {
         Self {
             database,
             directory,
+            inventory_scan: tokio::sync::Mutex::new(()),
         }
     }
 

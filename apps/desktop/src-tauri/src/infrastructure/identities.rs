@@ -21,7 +21,8 @@ impl From<sqlx::Error> for IdentityError {
 
 pub(crate) async fn list(pool: &SqlitePool) -> Result<Vec<Identity>, IdentityError> {
     Ok(query_as(
-        "SELECT id, label, git_name, email, is_default, revision
+        "SELECT id, label, git_name, email, is_default, revision,
+            (SELECT count(*) FROM identity_rules WHERE identity_id = identities.id) AS assignment_count
          FROM identities ORDER BY is_default DESC, label COLLATE NOCASE, id",
     )
     .fetch_all(pool)
