@@ -8,6 +8,8 @@ En **Directorios**, añade la ruta absoluta de una carpeta de trabajo y pulsa **
 
 Pulsa **Vista previa de Git** para ver qué archivo global recibiría la inclusión, qué reglas se generarían para todo el inventario y qué valores prevalecerían en los repositorios que GitPilot puede verificar. La simulación usa archivos temporales y conserva la configuración existente.
 
+Cuando la vista previa se puede verificar, elige **Revisar aplicación** y confirma el destino. GitPilot guarda un respaldo cifrado de la configuración global existente, activa las reglas y verifica el resultado con Git. Abre de nuevo la vista previa para revisar la restauración. Para aplicar otro conjunto de reglas, restaura primero la aplicación anterior. En Linux, respaldar un archivo existente requiere `secret-tool` y un servicio Secret Service disponible en la sesión de escritorio.
+
 ## Ejecutar en desarrollo
 
 Instala Node.js 24, npm y Rust mediante rustup. El archivo `rust-toolchain.toml` selecciona Rust y sus componentes de formato y lint.

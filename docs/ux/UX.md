@@ -30,6 +30,8 @@ Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de c
 
 **Vista previa de Git.** Se abre en el panel de Directorios, con el destino y el manifiesto primero. Los repositorios con discrepancias aparecen antes que el resto. Se puede desplegar la comparación por campo y el patrón de cada regla. Volver al inventario conserva la selección y devuelve el foco al botón de entrada.
 
+**Aplicación y restauración.** Una vista previa verificable ofrece «Revisar aplicación». La confirmación en el mismo panel repite el archivo global. Una vez verificada, la aplicación muestra el destino y permite confirmar la restauración. «Recuperación pendiente» identifica el archivo cuyo estado requiere revisión.
+
 **Ventana.** El área de trabajo es fija de 900 × 600 píxeles lógicos, con minimizar y cerrar mediante los controles nativos. La lista y el detalle se desplazan de forma independiente. El diseño reorganiza los paneles cuando el zoom reduce el espacio de contenido.
 
 ## Criterios visuales y de accesibilidad

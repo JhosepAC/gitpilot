@@ -69,4 +69,11 @@ Prettier, ESLint, typecheck, cuatro pruebas de Vitest, formato de Rust, Clippy y
 
 - En Windows 11 x86_64 con Git 2.55.0.windows.5 y Debian Bookworm x86_64 con Git 2.39.5 pasaron la compilación Tauri, formato, ESLint, TypeScript, cuatro pruebas Vitest, Clippy y doce pruebas Rust. Los casos nuevos verifican selección de HOME y XDG, inclusiones relativas, rutas con espacios y corchetes, precedencia entre carpeta, predeterminado y excepción, y conservación del correo local.
 - En WebView2 se registró un directorio temporal, se asignó un perfil y se abrió la vista previa. Se comprobó el destino global, el conflicto, el origen de los valores actual y simulado, el retorno de foco al inventario y el área fija de 900 × 600. En WebKitGTK se comprobó el escaneo y la vista previa con un perfil predeterminado y un correo local contradictorio.
-- Los archivos Git globales y locales de los fixtures conservaron sus bytes. La entrega valida la simulación. La aceptación de aplicación, recuperación, instalación y commits externos se completa al habilitar la escritura.
+- Los archivos Git globales y locales de los fixtures conservaron sus bytes durante la simulación.
+
+## Evidencia de fase 4 · Aplicación y recuperación
+
+- En Windows 11 x86_64 con Git 2.55.0.windows.5 y Debian Bookworm x86_64 con Git 2.39.5 pasaron compilación, formato, lint, TypeScript, cuatro pruebas Vitest y catorce pruebas Rust. Los casos de recuperación recrean un journal interrumpido y verifican tanto la compensación como la preservación de una edición externa. También se prueba la contención con un lock ajeno.
+- En WebView2 se comprobó el rechazo de una vista previa vencida, la aplicación de una regla de carpeta y una excepción, la confirmación de restauración y el bloqueo tras una edición externa. Con GitPilot cerrado se crearon commits desde Git CLI y se verificó el nombre y correo de autor y committer. Un repositorio creado después de aplicar heredó la regla. La restauración recuperó los bytes anteriores.
+- En WebKitGTK se comprobó la aplicación y la restauración con un almacén Secret Service temporal. SQLite conservó el respaldo cifrado. Git CLI confirmó autor y committer en un commit temporal y la herencia en un repositorio nuevo. Se compararon los bytes del archivo global restaurado y del archivo local.
+- La validación de cierre abrupto usa un estado de interrupción reproducido en fixtures. Los cortes de energía físicos, los instaladores y el flujo desde un editor quedan pendientes.

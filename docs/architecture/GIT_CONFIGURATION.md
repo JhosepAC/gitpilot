@@ -27,6 +27,16 @@ GitPilot lee una instantánea del inventario y genera un manifiesto candidato co
 
 La comparación se limita a la configuración de identidad de repositorios conocidos y worktrees vinculados verificables. El presupuesto es de 80 comparaciones y 15 segundos para el recorrido de verificación. Una raíz sin escaneo completo, un entorno redirigido o una topología especial pueden reducir la cobertura. La simulación añade un nivel de inclusión y puede fallar en configuraciones que ya estén cerca del límite de Git. Las reglas de carpeta pueden alcanzar repositorios ordinarios futuros y rutas excluidas del inventario. Los resultados describen el momento de la consulta. La confirmación de escritura requerirá una nueva comprobación de archivos y revisiones bajo bloqueo.
 
+## Aplicación inicial y restauración
+
+La confirmación liga la simulación, las revisiones de las raíces y repositorios, la identidad del directorio de destino y la huella del archivo original. El motor recalcula la vista previa antes de preparar la operación y la vuelve a comprobar con el lock de Git. Los archivos de identidad y el manifiesto se publican como una generación inmutable en el directorio privado de GitPilot. El cambio externo se reduce a añadir una referencia al archivo global. Los conflictos locales que se mostraron en la vista previa se conservan y se vuelven a comprobar con Git.
+
+El journal durable conserva los estados y las huellas en SQLite. El respaldo del archivo global existente se cifra con DPAPI para el usuario en Windows. En Linux se cifra con AES-256-GCM y se guarda la clave en Secret Service mediante `/usr/bin/secret-tool`. El motor descifra y verifica el respaldo antes de publicar el archivo. Si el destino no existía, el journal registra su ausencia para retirarlo durante la restauración.
+
+Al abrir, GitPilot reconcilia una aplicación o restauración interrumpida. Recupera automáticamente cuando puede comprobar la identidad y huella del archivo publicado. Si encuentra cambios ajenos o un archivo ambiguo, conserva el journal y detiene la recuperación. El usuario puede revisar y confirmar una restauración desde Directorios. Una segunda aplicación requiere restaurar la anterior. Las ediciones directas de configuraciones locales, la actividad completa y la limpieza de respaldos y generaciones se completarán en entregas posteriores.
+
+La escritura inicial se limita a volúmenes fijos de Windows y a ext, XFS, Btrfs y OverlayFS en Linux. Linux exige un archivo ordinario del usuario, sin enlaces adicionales ni atributos extendidos. La validación de Windows cubre reemplazo, permisos y recuperación ante cierre del proceso. La resistencia a un corte de energía físico queda pendiente.
+
 ## Evidencia y prueba de viabilidad
 
 La [matriz de fase 0](../testing/PHASE_0.md) registra qué comportamiento se observó con Git real, el Git mínimo candidato y las comprobaciones pendientes. El [ADR de recuperación](../decisions/ADR-003-recuperacion.md) define los estados y las condiciones de restauración que deberá validar el motor.

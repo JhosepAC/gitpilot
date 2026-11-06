@@ -1,6 +1,6 @@
 # ADR-003 · Configuración recuperable
 
-**Estado** · Protocolo definido. Validación de mecanismos nativos y fallos por etapa pendiente.
+**Estado** · Aplicación inicial y restauración verificadas con archivos temporales en Windows y Linux. La validación de un corte de energía y los escenarios de publicación quedan pendientes.
 
 Vincular el consentimiento al plan y sus huellas. Generar los perfiles inmutables, adquirir un bloqueo de aplicación y tomar los archivos `<destino>.lock` de Git de forma exclusiva y en orden estable. Releer destino, permisos, dependencias y huellas bajo bloqueo. Usar el reemplazo por destino en el mismo filesystem. Tomar el lock nuevamente al compensar una escritura y comprobar de nuevo el estado. Un lock ajeno provoca espera acotada o un error recuperable. La coordinación cubre escritores que respetan el lock y las precondiciones reducen el riesgo frente a editores externos. [Protocolo de locks de Git](https://github.com/git/git/blob/v2.39.0/lockfile.h)
 
