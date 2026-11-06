@@ -6,6 +6,7 @@ pub(crate) mod discovery;
 pub(crate) mod git;
 pub(crate) mod git_identity;
 pub(crate) mod identities;
+pub(crate) mod inspector;
 pub(crate) mod inventory;
 mod native_file;
 pub(crate) mod storage;

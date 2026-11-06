@@ -7,9 +7,18 @@ use std::{
 use tokio::{io::AsyncReadExt, process::Command, time::timeout};
 
 pub(crate) fn executable() -> Option<PathBuf> {
+    find_executable("git")
+}
+
+pub(crate) fn find_executable(name: &str) -> Option<PathBuf> {
+    let filename = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.into()
+    };
     env::split_paths(&env::var_os("PATH")?)
         .filter(|path| path.is_absolute())
-        .map(|path| path.join(if cfg!(windows) { "git.exe" } else { "git" }))
+        .map(|path| path.join(&filename))
         .find(|path| path.is_file())
 }
 

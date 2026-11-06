@@ -4,9 +4,18 @@ use tauri::State;
 use crate::{
     application::Foundation,
     error::StorageError,
-    infrastructure::{config_apply, config_preview, conflicts, discovery, inventory},
+    infrastructure::{config_apply, config_preview, conflicts, discovery, inspector, inventory},
     repository::{Directory, DirectoryInventory, IdentityDiagnosis, InventoryError, ScanReport},
 };
+
+#[tauri::command]
+pub(crate) async fn inspect_repository(
+    foundation: State<'_, Foundation>,
+    id: i64,
+) -> Result<inspector::Inspector, InventoryError> {
+    let repository = inventory::repository(foundation.database()?, id).await?;
+    inspector::inspect(&repository).await
+}
 
 #[tauri::command]
 pub(crate) async fn native_config_status(

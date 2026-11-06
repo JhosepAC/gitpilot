@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-inspect-repository"
+description = "Read the branch, index, redacted remotes and local authentication hints for an inventoried repository"
+commands.allow = ["inspect_repository"]

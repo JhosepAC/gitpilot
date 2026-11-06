@@ -52,6 +52,7 @@ pub fn run() -> tauri::Result<()> {
             repository_commands::scan_directory,
             repository_commands::set_inventory_identity,
             repository_commands::diagnose_repository,
+            repository_commands::inspect_repository,
             repository_commands::preview_native_config,
             repository_commands::native_config_status,
             repository_commands::confirm_native_config,
