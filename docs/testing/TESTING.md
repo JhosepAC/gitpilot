@@ -76,4 +76,19 @@ Prettier, ESLint, typecheck, cuatro pruebas de Vitest, formato de Rust, Clippy y
 - En Windows 11 x86_64 con Git 2.55.0.windows.5 y Debian Bookworm x86_64 con Git 2.39.5 pasaron compilación, formato, lint, TypeScript, cuatro pruebas Vitest y catorce pruebas Rust. Los casos de recuperación recrean un journal interrumpido y verifican tanto la compensación como la preservación de una edición externa. También se prueba la contención con un lock ajeno.
 - En WebView2 se comprobó el rechazo de una vista previa vencida, la aplicación de una regla de carpeta y una excepción, la confirmación de restauración y el bloqueo tras una edición externa. Con GitPilot cerrado se crearon commits desde Git CLI y se verificó el nombre y correo de autor y committer. Un repositorio creado después de aplicar heredó la regla. La restauración recuperó los bytes anteriores.
 - En WebKitGTK se comprobó la aplicación y la restauración con un almacén Secret Service temporal. SQLite conservó el respaldo cifrado. Git CLI confirmó autor y committer en un commit temporal y la herencia en un repositorio nuevo. Se compararon los bytes del archivo global restaurado y del archivo local.
-- La validación de cierre abrupto usa un estado de interrupción reproducido en fixtures. Los cortes de energía físicos, los instaladores y el flujo desde un editor quedan pendientes.
+- La validación de cierre abrupto usa un estado de interrupción reproducido en fixtures. Los cortes de energía físicos quedan pendientes.
+
+## Evidencia de cierre de fase 4
+
+En Windows 11 x86_64 con Git 2.55.0.windows.5 y Debian 12 amd64 con Git 2.39.5 pasaron formato, ESLint, TypeScript, cuatro pruebas Vitest, Clippy con avisos como errores y quince pruebas Rust. Se generaron los candidatos de release NSIS y Debian y se calculó su SHA-256.
+
+| Caso | Validación |
+| --- | --- |
+| M1 | Se instalaron y desinstalaron el NSIS x64 y el paquete Debian amd64. En Windows se recorrió la aplicación instalada con un identificador aislado de QA. En Debian se abrió el paquete de release instalado. Inicio detectó Git y se comprobó la persistencia de tres perfiles en el fixture de Windows. |
+| M2 | Se registraron dos raíces, se detectó un repositorio anidado, se excluyó una subcarpeta y se comprobó el estado sin asignación antes de vincular los perfiles. |
+| M3 | Se asignó un tercer perfil como excepción. La vista previa y confirmación mostraron la prioridad y el destino global. |
+| M4 | Con GitPilot cerrado, Git CLI creó commits de carpeta y excepción. Un repositorio nuevo heredó la regla. Una instancia portátil de VS Code Insiders 1.146.0 creó un commit mediante la API de su extensión Git. Se comprobó autor y committer desde Git. El VS Code estable instalado tenía una actualización en curso. |
+| M5 | La decisión de conservar quedó en Actividad y perdió vigencia al cambiar el correo local. Windows y Debian aplicaron una corrección local explícita y verificaron la identidad. Una prueba Rust rechaza el origen local en un archivo incluido ajeno al repositorio. |
+| M6 | Se restauraron los archivos global y local desde Actividad y se compararon los bytes. Las pruebas Rust cubren la interrupción simulada y la protección de una edición externa. |
+
+Los artefactos de esta entrega son candidatos locales. La firma de los instaladores y la publicación formal quedan pendientes.

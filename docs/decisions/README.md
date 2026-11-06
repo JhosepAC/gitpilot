@@ -6,7 +6,7 @@ Los ADR iniciales registran la dirección de trabajo. Resolver las decisiones co
 | --- | --- | --- |
 | [001](ADR-001-escritorio.md) | Monolito modular local-first con Tauri, Rust y SQLite | Propuesto |
 | [002](ADR-002-git-nativo.md) | Git CLI e inclusiones acotadas a Git dirs ordinarios | Adoptado para Windows y Linux |
-| [003](ADR-003-recuperacion.md) | Locks de Git, respaldo cifrado y recuperación por journal | Protocolo definido, adaptador por validar |
+| [003](ADR-003-recuperacion.md) | Locks de Git, respaldo cifrado y recuperación por journal | Adaptador inicial verificado en Windows y Linux |
 | [004](ADR-004-autenticacion.md) | Separar OAuth, acceso remoto y firma, con secretos en el SO | Propuesto para después del MVP |
 
 | Decisión pendiente | Momento y evidencia |
