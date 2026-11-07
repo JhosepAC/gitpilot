@@ -36,7 +36,7 @@ Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de c
 
 **Inspector de Git.** Desde el detalle de un repositorio presente, el Inspector abre la rama y el índice primero. Luego muestra los remotos y separa el acceso SSH, el acceso HTTPS y la firma de commits. Volver conserva la selección y devuelve el foco al botón de entrada.
 
-**Comprobaciones y pre-commit.** El Inspector muestra el destino y la modalidad antes de ejecutar una prueba. La instalación del hook muestra el archivo, la identidad revisada y si emitirá un aviso o bloqueará el commit. La retirada tiene su propia confirmación y queda registrada en Actividad.
+**Comprobaciones y pre-commit.** El Inspector distingue lectura HTTPS anónima y con credenciales, SSH directo y configurado, y las comprobaciones de firma. Antes de ejecutar muestra la modalidad, el destino y, cuando corresponde, el salto SSH o la referencia OpenPGP. El foco vuelve al control de origen tras cancelar o terminar. La instalación del hook muestra el archivo, la identidad revisada y si emitirá un aviso o bloqueará el commit. La retirada tiene su propia confirmación y queda registrada en Actividad.
 
 **Ventana.** El área de trabajo es fija de 900 × 600 píxeles lógicos, con minimizar y cerrar mediante los controles nativos. La lista y el detalle se desplazan de forma independiente. El diseño reorganiza los paneles cuando el zoom reduce el espacio de contenido.
 

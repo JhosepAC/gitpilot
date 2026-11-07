@@ -63,4 +63,4 @@ Fase completada para los candidatos locales de v0.1.0. Incluye Inicio, vista pre
 
 ## Estado de la fase 5
 
-El Inspector muestra la rama, el estado del índice y las modificaciones rastreadas sin preparar cuando puede comprobarlas de forma aislada. La segunda entrega incorpora comprobaciones confirmadas de lectura HTTPS anónima, SSH directo y firma SSH con agente. También incorpora el hook pre-commit voluntario, con aviso, bloqueo y retirada protegida. Quedan pendientes la comprobación de HTTPS con el helper de credenciales, las pruebas de firma OpenPGP y las configuraciones SSH complejas. [Alcance del diagnóstico](security/AUTHENTICATION.md)
+El Inspector muestra la rama, el estado del índice y las modificaciones rastreadas sin preparar cuando puede comprobarlas de forma aislada. Ofrece lectura HTTPS anónima o con credenciales existentes, SSH directo o con una ruta configurada y firma de desafíos mediante SSH u OpenPGP. El hook pre-commit voluntario admite aviso, bloqueo y retirada protegida. Los formatos de credenciales, directivas SSH y referencias de firma compatibles se detallan en la especificación. [Alcance del diagnóstico](security/AUTHENTICATION.md)

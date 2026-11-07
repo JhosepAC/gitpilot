@@ -14,7 +14,7 @@ Cuando la vista previa se puede verificar, elige **Revisar aplicación** y confi
 
 En un repositorio del inventario, **Abrir Inspector** muestra la rama, el estado del índice, los destinos de lectura y envío y los diagnósticos locales de SSH, HTTPS y firma. Para los remotos se muestran el transporte y el host. La identidad de commit se sigue consultando en el detalle del repositorio.
 
-Desde el Inspector puedes revisar y confirmar una prueba de lectura SSH o HTTPS en un remoto directo compatible, comprobar una firma SSH con el agente o instalar el hook `pre-commit` para la identidad revisada. El hook ofrece aviso o bloqueo y puede retirarse desde el Inspector o Actividad.
+Desde el Inspector puedes revisar y confirmar una lectura remota por SSH directo o configurado, o por HTTPS anónimo o con credenciales existentes. También puedes comprobar una firma SSH u OpenPGP e instalar el hook `pre-commit` para la identidad revisada. El hook ofrece aviso o bloqueo y puede retirarse desde el Inspector o Actividad. [Modalidades y compatibilidad](docs/security/AUTHENTICATION.md#comprobaciones-explícitas)
 
 ## Ejecutar en desarrollo
 
