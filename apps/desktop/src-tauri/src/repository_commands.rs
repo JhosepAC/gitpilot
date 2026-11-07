@@ -1,5 +1,5 @@
 use std::path::Path;
-use tauri::State;
+use tauri::{ipc::Channel, State};
 
 use crate::{
     application::Foundation,
@@ -7,8 +7,11 @@ use crate::{
     infrastructure::{
         config_apply, config_preview, conflicts, discovery, inspector, inspector_probe, inventory,
         pre_commit,
+        scan_preferences::{self, ScanPreferences, ScanSettings},
     },
-    repository::{Directory, DirectoryInventory, IdentityDiagnosis, InventoryError, ScanReport},
+    repository::{
+        Directory, DirectoryInventory, IdentityDiagnosis, InventoryError, ScanProgress, ScanReport,
+    },
 };
 
 #[tauri::command]
@@ -282,17 +285,36 @@ pub(crate) async fn set_directory_exclusion(
 pub(crate) async fn scan_directory(
     foundation: State<'_, Foundation>,
     id: i64,
+    scan_id: String,
+    on_progress: Channel<ScanProgress>,
 ) -> Result<ScanReport, InventoryError> {
-    let _guard = foundation
+    foundation
         .inventory_scan
-        .try_lock()
-        .map_err(|_| InventoryError::ScanInProgress)?;
-    let pool = foundation.database()?;
-    let directory = inventory::directory(pool, id).await?;
-    let contents = inventory::contents(pool, id).await?;
-    let (repos, report) = discovery::scan(&directory.path, &contents.exclusions).await?;
-    inventory::save_scan(pool, &directory, repos, report.partial).await?;
-    Ok(report)
+        .run(foundation.database()?, id, scan_id, |progress| {
+            let _ = on_progress.send(progress);
+        })
+        .await
+}
+
+#[tauri::command]
+pub(crate) fn cancel_directory_scan(foundation: State<'_, Foundation>, scan_id: String) -> bool {
+    foundation.inventory_scan.cancel(&scan_id)
+}
+
+#[tauri::command]
+pub(crate) async fn read_scan_preferences(
+    foundation: State<'_, Foundation>,
+) -> Result<ScanSettings, InventoryError> {
+    scan_preferences::read(foundation.database()?).await
+}
+
+#[tauri::command]
+pub(crate) async fn save_scan_preferences(
+    foundation: State<'_, Foundation>,
+    expected: ScanPreferences,
+    values: ScanPreferences,
+) -> Result<ScanSettings, InventoryError> {
+    scan_preferences::save(foundation.database()?, expected, values).await
 }
 
 #[tauri::command]

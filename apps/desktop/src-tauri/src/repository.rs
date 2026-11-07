@@ -9,6 +9,9 @@ pub(crate) enum InventoryError {
     NotFound,
     Conflict,
     ScanInProgress,
+    ScanRequestInvalid,
+    ScanPreferencesInvalid,
+    ScanPreferencesChanged,
     GitUnavailable,
     GitReadFailed,
     StorageUnavailable,
@@ -56,7 +59,9 @@ pub(crate) struct DiscoveredRepository {
 pub(crate) struct ScanReport {
     pub(crate) found: usize,
     pub(crate) skipped: usize,
+    pub(crate) visited: usize,
     pub(crate) partial: bool,
+    pub(crate) cancelled: bool,
     pub(crate) limits: Vec<ScanLimit>,
 }
 
@@ -74,6 +79,38 @@ impl ScanReport {
         self.partial = true;
         if !self.limits.contains(&limit) {
             self.limits.push(limit);
+        }
+    }
+
+    pub(crate) fn cancel(&mut self) {
+        self.cancelled = true;
+        self.partial = true;
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ScanPhase {
+    Walking,
+    Saving,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ScanProgress {
+    pub(crate) phase: ScanPhase,
+    pub(crate) visited: usize,
+    pub(crate) found: usize,
+    pub(crate) skipped: usize,
+}
+
+impl ScanProgress {
+    pub(crate) fn new(phase: ScanPhase, report: &ScanReport) -> Self {
+        Self {
+            phase,
+            visited: report.visited,
+            found: report.found,
+            skipped: report.skipped,
         }
     }
 }

@@ -15,6 +15,8 @@ mod inspector_openpgp;
 pub(crate) mod inspector_probe;
 mod inspector_ssh;
 pub(crate) mod inventory;
+pub(crate) mod inventory_scan;
 mod native_file;
 pub(crate) mod pre_commit;
+pub(crate) mod scan_preferences;
 pub(crate) mod storage;

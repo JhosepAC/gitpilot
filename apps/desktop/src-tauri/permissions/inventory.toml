@@ -8,6 +8,9 @@ commands.allow = [
     "list_directory_contents",
     "set_directory_exclusion",
     "scan_directory",
+    "cancel_directory_scan",
+    "read_scan_preferences",
+    "save_scan_preferences",
     "set_inventory_identity",
     "diagnose_repository",
 ]

@@ -5,19 +5,17 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tokio::fs;
+use tokio::{fs, sync::watch};
 
 use crate::repository::{
-    ConfigValue, DiscoveredRepository, InventoryError, ObservedIdentity, ScanLimit, ScanReport,
+    ConfigValue, DiscoveredRepository, InventoryError, ObservedIdentity, ScanLimit, ScanPhase,
+    ScanProgress, ScanReport,
 };
 
-use super::git;
+use super::{git, scan_preferences::ScanPreferences};
 
-const SCAN_TIME: Duration = Duration::from_secs(12);
 const GIT_TIME: Duration = Duration::from_secs(2);
-const MAX_ENTRIES: usize = 12_000;
-const MAX_DEPTH: usize = 24;
-const MAX_REPOSITORIES: usize = 200;
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
 
 fn is_link(metadata: &Metadata) -> bool {
     #[cfg(windows)]
@@ -76,15 +74,42 @@ enum Visit {
 pub(crate) async fn scan(
     stored_path: &str,
     exclusions: &[String],
+    preferences: ScanPreferences,
+    cancel: &mut watch::Receiver<bool>,
+    notify: &mut impl FnMut(ScanProgress),
 ) -> Result<(Vec<DiscoveredRepository>, ScanReport), InventoryError> {
-    scan_with_entry_limit(stored_path, exclusions, MAX_ENTRIES).await
+    let mut repositories = Vec::new();
+    let mut report = ScanReport::default();
+    tokio::select! {
+        biased;
+        _ = cancel.wait_for(|cancelled| *cancelled) => report.cancel(),
+        result = collect(stored_path, exclusions, preferences, notify, &mut repositories, &mut report) => result?,
+    }
+    report.found = repositories.len();
+    report.partial |= report.skipped > 0;
+    Ok((repositories, report))
 }
 
-async fn scan_with_entry_limit(
+fn publish_progress(
+    now: Instant,
+    last: &mut Instant,
+    report: &ScanReport,
+    notify: &mut impl FnMut(ScanProgress),
+) {
+    if now.duration_since(*last) >= PROGRESS_INTERVAL {
+        *last = now;
+        notify(ScanProgress::new(ScanPhase::Walking, report));
+    }
+}
+
+async fn collect(
     stored_path: &str,
     exclusions: &[String],
-    entry_limit: usize,
-) -> Result<(Vec<DiscoveredRepository>, ScanReport), InventoryError> {
+    preferences: ScanPreferences,
+    notify: &mut impl FnMut(ScanProgress),
+    repositories: &mut Vec<DiscoveredRepository>,
+    report: &mut ScanReport,
+) -> Result<(), InventoryError> {
     let executable = git::executable().ok_or(InventoryError::GitUnavailable)?;
     let registered = Path::new(stored_path);
     let root = tokio::time::timeout(GIT_TIME, async {
@@ -100,19 +125,20 @@ async fn scan_with_entry_limit(
     })
     .await
     .map_err(|_| InventoryError::InvalidPath)??;
-    let deadline = Instant::now() + SCAN_TIME;
+    let scan_time = Duration::from_secs(preferences.time_seconds.into());
+    let mut last_progress = Instant::now();
+    let deadline = last_progress + scan_time;
     let mut pending = VecDeque::from([(root.clone(), 0, Visit::Inspect)]);
-    let mut repositories = Vec::new();
-    let mut report = ScanReport::default();
-    let mut visited = 0;
 
-    let walk = tokio::time::timeout(SCAN_TIME, async {
+    let walk = tokio::time::timeout(scan_time, async {
         'walk: while let Some((directory, depth, visit)) = pending.pop_front() {
-            if deadline <= Instant::now() {
+            let now = Instant::now();
+            if deadline <= now {
                 report.reached(ScanLimit::Time);
                 break;
             }
-            if repositories.len() >= MAX_REPOSITORIES {
+            publish_progress(now, &mut last_progress, report, notify);
+            if repositories.len() >= preferences.max_repositories as usize {
                 report.reached(ScanLimit::Repositories);
                 break;
             }
@@ -164,7 +190,10 @@ async fn scan_with_entry_limit(
                     )
                     .await
                     {
-                        Ok(repo) => repositories.push(repo),
+                        Ok(repo) => {
+                            repositories.push(repo);
+                            report.found = repositories.len();
+                        }
                         Err(_) => report.skipped += 1,
                     }
                 }
@@ -181,23 +210,25 @@ async fn scan_with_entry_limit(
             loop {
                 match children.next_entry().await {
                     Ok(Some(child)) => {
-                        if deadline <= Instant::now() {
+                        let now = Instant::now();
+                        if deadline <= now {
                             report.reached(ScanLimit::Time);
                             break 'walk;
                         }
-                        if visited >= entry_limit {
+                        if report.visited >= preferences.max_entries as usize {
                             // Already queued directories can still be verified without enumerating more.
                             report.reached(ScanLimit::Entries);
                             break;
                         }
-                        visited += 1;
+                        report.visited += 1;
+                        publish_progress(now, &mut last_progress, report, notify);
                         if child.file_name().eq_ignore_ascii_case(".git") {
                             continue;
                         }
                         match child.file_type().await {
                             Ok(kind) if kind.is_dir() => {
                                 let path = child.path();
-                                if depth < MAX_DEPTH {
+                                if depth < preferences.max_depth {
                                     pending.push_back((path, depth + 1, Visit::Inspect));
                                 } else {
                                     match fs::symlink_metadata(&path).await {
@@ -226,9 +257,7 @@ async fn scan_with_entry_limit(
     if walk.is_err() {
         report.reached(ScanLimit::Time);
     }
-    report.found = repositories.len();
-    report.partial |= report.skipped > 0;
-    Ok((repositories, report))
+    Ok(())
 }
 
 async fn read(
@@ -419,6 +448,25 @@ fn parse_config(output: &str) -> Result<ObservedIdentity, InventoryError> {
 mod tests {
     use super::*;
 
+    async fn scan_with_entry_limit(
+        path: &str,
+        exclusions: &[String],
+        max_entries: u32,
+    ) -> Result<(Vec<DiscoveredRepository>, ScanReport), InventoryError> {
+        let (_sender, mut cancel) = watch::channel(false);
+        scan(
+            path,
+            exclusions,
+            ScanPreferences {
+                max_entries,
+                ..ScanPreferences::DEFAULT
+            },
+            &mut cancel,
+            &mut |_| {},
+        )
+        .await
+    }
+
     async fn fixture_git(executable: &Path, path: &Path, args: &[&str]) -> String {
         let mut command = git::command(executable, path);
         command
@@ -505,7 +553,10 @@ mod tests {
             }
             let root_path = directory_path(&root).await.unwrap();
             let exclude = directory_path(&root.join("excluded")).await.unwrap();
-            let (repos, report) = scan(&root_path, &[exclude]).await.unwrap();
+            let (repos, report) =
+                scan_with_entry_limit(&root_path, &[exclude], ScanPreferences::DEFAULT.max_entries)
+                    .await
+                    .unwrap();
             assert!(!report.partial, "skipped {}", report.skipped);
             assert_eq!(report.found, 5);
             assert!(repos

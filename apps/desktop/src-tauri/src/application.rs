@@ -2,12 +2,15 @@ use std::path::PathBuf;
 
 use sqlx::SqlitePool;
 
-use crate::{error::StorageError, infrastructure::storage};
+use crate::{
+    error::StorageError,
+    infrastructure::{inventory_scan::ScanJobs, storage},
+};
 
 pub(crate) struct Foundation {
     database: Result<SqlitePool, StorageError>,
     pub(crate) directory: Option<PathBuf>,
-    pub(crate) inventory_scan: tokio::sync::Mutex<()>,
+    pub(crate) inventory_scan: ScanJobs,
     pub(crate) github: crate::infrastructure::github::Github,
 }
 
@@ -25,7 +28,7 @@ impl Foundation {
         Self {
             database,
             directory,
-            inventory_scan: tokio::sync::Mutex::new(()),
+            inventory_scan: ScanJobs::default(),
             github: crate::infrastructure::github::Github::new(),
         }
     }
