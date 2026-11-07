@@ -763,12 +763,13 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-            let directory = tempfile::tempdir().unwrap();
-            let store = Accounts::lock(&pool, directory.path()).unwrap();
-            let account = store.row(42).await.unwrap().unwrap();
-            assert_eq!(account.credential_ref, "legacy");
-            assert_eq!((account.expires_at, account.verified_at), (123, 100));
-            assert_eq!(account.state, "active");
+            let account: (String, i64, i64, String) = sqlx::query_as(
+                "SELECT credential_ref, expires_at, verified_at, state FROM github_accounts WHERE github_id = 42",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(account, ("legacy".into(), 123, 100, "active".into()));
             let ownership: (String, i64) = sqlx::query_as(
                 "SELECT client_id, github_id FROM github_credentials WHERE reference = 'legacy'",
             )
