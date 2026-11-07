@@ -37,6 +37,14 @@ La renovación registra una referencia pendiente antes de solicitar credenciales
 
 La migración `202611070003_github_remote_links.sql` registra un vínculo por repositorio local y nombre de remoto. Guarda los IDs de la cuenta, instalación y repositorio autorizado, la huella del destino efectivo de lectura y la versión del vínculo. La versión protege el reemplazo y la retirada frente a cambios concurrentes. La eliminación del repositorio local o la desconexión de la cuenta elimina sus vínculos mediante las claves foráneas.
 
+## Portabilidad
+
+El JSON v1 contiene perfiles de autor, asignaciones de identidad por ruta y las preferencias de idioma (`ui.language`) y escaneo (`inventory.scan`). Los identificadores de perfil relacionan las asignaciones dentro del archivo. El límite es 1 MiB. La exportación lee una instantánea de SQLite y guarda el archivo elegido en el selector nativo. Si el destino ya existe, solicita elegir otro nombre. Tokens, claves privadas, datos de cuentas, inventario, exclusiones, actividad y respaldos se conservan en sus almacenes respectivos.
+
+La importación valida versión, perfiles, referencias, rutas absolutas y límites de escaneo. La revisión muestra los perfiles que se añadirán o reutilizarán, las asignaciones y las preferencias que cambiarán. Se conservan el perfil predeterminado y las asignaciones locales existentes. Una ruta del archivo debe coincidir con un directorio registrado o un repositorio presente. La confirmación revalida la instantánea en una transacción SQLite. La aplicación a Git usa su propio flujo de revisión, respaldo, confirmación y verificación.
+
+La migración `202611070004_portable_activity.sql` añade un registro local con tipo de transferencia, fecha y número de perfiles en el archivo. La importación registra el evento en su transacción y la exportación después de guardar. Actividad combina esas entradas con el historial de Git.
+
 ## Extensiones posteriores
 
 | Tabla o relación | Uso |
@@ -46,5 +54,3 @@ La migración `202611070003_github_remote_links.sql` registra un vínculo por re
 | `auth_accounts` | Proveedor, ID estable del usuario remoto, nombre visible y referencia al almacén seguro. Una cuenta puede relacionarse con varios remotos y perfiles. |
 | `repository_remotes` | Repositorio, nombre, endpoint sin credenciales y asociaciones. Tratar la caché como derivada de Git. |
 | `github_installations` | Metadatos de instalaciones y organizaciones si el tipo de aplicación elegido los requiere. |
-
-La exportación futura serializa perfiles, reglas y preferencias seleccionadas. Validar el formato y las rutas al importar y previsualizar cualquier cambio Git. Tokens, claves privadas, journal y respaldos quedan fuera de la exportación.

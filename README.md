@@ -14,6 +14,8 @@ Cuando la vista previa se puede verificar, elige **Revisar aplicación** y confi
 
 **Inicio** comprueba Git y guía la creación o importación de perfiles y el registro de carpetas. En el diagnóstico de un repositorio, puedes registrar que quieres conservar el valor actual o revisar un cambio local compatible. **Actividad** muestra esas decisiones y el estado de las escrituras. Desde allí puedes revisar una restauración global o local.
 
+En **Configuración**, puedes elegir español o inglés para la navegación, Inicio, Configuración y Actividad. La elección se conserva al cerrar GitPilot. **Exportar JSON** guarda perfiles, asignaciones y preferencias de escaneo e idioma. El archivo contiene correos y rutas locales. Al importarlo, revisa qué se añadiría y qué se conservaría. Las asignaciones requieren una ruta registrada que coincida con la del archivo. Para aplicar los perfiles a Git, usa **Vista previa de Git** en Directorios. El filtro **Portabilidad** en Actividad muestra las transferencias.
+
 En un repositorio del inventario, **Abrir Inspector** muestra la rama, el estado del índice, los destinos de lectura y envío y los diagnósticos locales de SSH, HTTPS y firma. Para los remotos se muestran el transporte y el host. La identidad de commit se sigue consultando en el detalle del repositorio.
 
 Desde el Inspector puedes revisar y confirmar una lectura remota por SSH directo o configurado, o por HTTPS anónimo o con credenciales existentes. También puedes comprobar una firma SSH u OpenPGP e instalar el hook `pre-commit` para la identidad revisada. El hook ofrece aviso o bloqueo y puede retirarse desde el Inspector o Actividad. [Modalidades y compatibilidad](docs/security/AUTHENTICATION.md#comprobaciones-explícitas)
