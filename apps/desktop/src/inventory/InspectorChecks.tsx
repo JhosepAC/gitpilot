@@ -3,8 +3,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { inventoryApi, inventoryError } from "./inventoryApi";
 import type { NativeOperation } from "./inventoryApi";
 
-type ProbeKind = "ssh" | "https" | "signing";
-type ProbePreview = { confirmation: string; host: string | null };
+type ProbeKind =
+  | "ssh"
+  | "ssh_configured"
+  | "https"
+  | "https_credentials"
+  | "signing"
+  | "open_pgp";
+type ProbePreview = {
+  confirmation: string;
+  host: string | null;
+  via: string | null;
+  key: string | null;
+  kind: ProbeKind;
+};
 type Mode = "warn" | "block";
 type HookPreview = {
   target: string;
@@ -20,11 +32,23 @@ const probes = {
       "Prueba de lectura con OpenSSH directo. El host debe ser conocido por el cliente.",
     success: "El remoto respondió por SSH.",
   },
+  ssh_configured: {
+    label: "Revisar ruta SSH configurada",
+    description:
+      "Consulta el remoto con la ruta y las claves configuradas. OpenSSH exige que cada host sea conocido.",
+    success: "El remoto respondió por la ruta SSH configurada.",
+  },
   https: {
     label: "Revisar prueba HTTPS",
     description:
       "Prueba de lectura anónima por HTTPS. Un repositorio privado puede requerir credenciales.",
     success: "El remoto respondió a la lectura anónima por HTTPS.",
+  },
+  https_credentials: {
+    label: "Revisar HTTPS con credenciales",
+    description:
+      "Consulta el remoto con credenciales disponibles en un helper compatible. La prueba se ejecuta sin abrir un inicio de sesión.",
+    success: "El remoto respondió a la lectura HTTPS con credenciales.",
   },
   signing: {
     label: "Revisar prueba de firma SSH",
@@ -32,51 +56,70 @@ const probes = {
       "Firma y comprueba un desafío temporal con la clave pública configurada y su clave cargada en el agente.",
     success: "El agente produjo una firma SSH válida para el desafío.",
   },
+  open_pgp: {
+    label: "Revisar prueba de firma OpenPGP",
+    description:
+      "GnuPG firma un desafío temporal con la clave indicada y verifica la firma en el equipo.",
+    success: "GnuPG produjo una firma OpenPGP válida para el desafío.",
+  },
 };
 
 const probeErrors: Record<string, string> = {
   unsupported:
-    "Esta prueba requiere un destino directo compatible o una referencia pública SSH admitida.",
+    "El destino, la configuración o la referencia de clave requieren revisión manual.",
   stale: "El destino o la clave cambió. Abre una nueva revisión.",
   unavailable:
     "No se pudo preparar la prueba con las herramientas disponibles.",
   timed_out: "La prueba superó el tiempo de espera.",
   failed:
     "La prueba falló. Comprueba el acceso, el host conocido o la disponibilidad de la clave según corresponda.",
+  credentials_unavailable:
+    "El helper no devolvió credenciales compatibles. Comprueba el acceso con Git y vuelve a intentarlo.",
+  signing_unavailable:
+    "GnuPG no pudo firmar con la clave indicada. Comprueba que la clave privada esté disponible y desbloqueada.",
 };
 
 export function ProbeControl({
   id,
-  kind,
+  kinds,
   remote,
 }: {
   id: number;
-  kind: ProbeKind;
+  kinds: ProbeKind[];
   remote?: string;
 }) {
   const [preview, setPreview] = useState<ProbePreview>();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
-  const { label, description, success } = probes[kind];
   const confirm = useRef<HTMLButtonElement>(null);
+  const reviews = useRef<Partial<Record<ProbeKind, HTMLButtonElement | null>>>(
+    {},
+  );
+  const restoreFocus = useRef<ProbeKind>(undefined);
   useEffect(() => {
+    if (busy) return;
     if (preview) confirm.current?.focus();
-  }, [preview]);
+    else if (restoreFocus.current) {
+      reviews.current[restoreFocus.current]?.focus();
+      restoreFocus.current = undefined;
+    }
+  }, [busy, preview]);
 
-  async function run(confirmed: boolean) {
+  async function run(kind: ProbeKind, confirmation?: string) {
     setBusy(true);
     setError("");
     setResult("");
     try {
-      if (confirmed && preview) {
+      if (confirmation) {
         await invoke("verify_inspector_probe", {
           id,
           kind,
           remote,
-          confirmation: preview.confirmation,
+          confirmation,
         });
-        setResult(success);
+        setResult(probes[kind].success);
+        restoreFocus.current = kind;
         setPreview(undefined);
       } else {
         setPreview(
@@ -93,6 +136,7 @@ export function ProbeControl({
           ? (probeErrors[problem] ?? probeErrors.unavailable)
           : probeErrors.unavailable,
       );
+      restoreFocus.current = kind;
       setPreview(undefined);
     } finally {
       setBusy(false);
@@ -108,33 +152,52 @@ export function ProbeControl({
               <strong>{preview.host}</strong>
             </p>
           )}
-          <p className="inventory-meta">{description}</p>
+          {preview.via && (
+            <p className="inventory-meta">Salto SSH · {preview.via}</p>
+          )}
+          {preview.key && (
+            <p>
+              <code>{preview.key}</code>
+            </p>
+          )}
+          <p className="inventory-meta">{probes[preview.kind].description}</p>
           <div className="action-row">
             <button
               className="button primary"
               ref={confirm}
               disabled={busy}
-              onClick={() => void run(true)}
+              onClick={() => void run(preview.kind, preview.confirmation)}
             >
               Ejecutar prueba
             </button>
             <button
               className="button"
               disabled={busy}
-              onClick={() => setPreview(undefined)}
+              onClick={() => {
+                restoreFocus.current = preview.kind;
+                setPreview(undefined);
+              }}
             >
               Cancelar
             </button>
           </div>
         </>
       ) : (
-        <button
-          className="button"
-          disabled={busy}
-          onClick={() => void run(false)}
-        >
-          {label}
-        </button>
+        <div className="action-row">
+          {kinds.map((kind) => (
+            <button
+              className="button"
+              disabled={busy}
+              key={kind}
+              ref={(button) => {
+                reviews.current[kind] = button;
+              }}
+              onClick={() => void run(kind)}
+            >
+              {probes[kind].label}
+            </button>
+          ))}
+        </div>
       )}
       {(busy || result) && (
         <p role="status" className="inventory-meta">
@@ -148,6 +211,37 @@ export function ProbeControl({
       )}
     </div>
   );
+}
+
+export function RemoteProbes({
+  id,
+  remote,
+  transport,
+  host,
+  configuredSsh,
+  credentials,
+}: {
+  id: number;
+  remote: string;
+  transport: string;
+  host: string | null;
+  configuredSsh: boolean;
+  credentials: boolean;
+}) {
+  const direct = ["github.com", "gitlab.com", "bitbucket.org"].includes(
+    host ?? "",
+  );
+  const kinds: ProbeKind[] = [];
+  if (transport === "ssh") {
+    if (direct) kinds.push("ssh");
+    if (host && configuredSsh) kinds.push("ssh_configured");
+  } else if (transport === "https" && direct) {
+    kinds.push("https");
+    if (credentials) kinds.push("https_credentials");
+  }
+  return kinds.length ? (
+    <ProbeControl id={id} remote={remote} kinds={kinds} />
+  ) : null;
 }
 
 export function HookControl({ id }: { id: number }) {

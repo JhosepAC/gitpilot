@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { HookControl, ProbeControl } from "./InspectorChecks";
+import { HookControl, ProbeControl, RemoteProbes } from "./InspectorChecks";
 
 type Endpoint = { transport: string; host: string | null };
 type Keys = {
@@ -65,7 +65,7 @@ const sshStatus = {
   simple: "Se revisaron las declaraciones simples del archivo SSH de usuario.",
   absent: "No se encontró un archivo SSH de usuario.",
   complex:
-    "La configuración tiene directivas que requieren revisión manual para resolver el alias.",
+    "La configuración contiene directivas que requieren comprobar la ruta SSH.",
   unavailable: "No se pudo comprobar el archivo SSH de usuario.",
 };
 
@@ -196,18 +196,18 @@ export function RepositoryInspector({
                   <dt>Envío</dt>
                   <dd>{endpoints(remote.push)}</dd>
                 </dl>
-                {remote.fetch.length === 1 &&
-                  ["github.com", "gitlab.com", "bitbucket.org"].includes(
-                    remote.fetch[0].host ?? "",
-                  ) &&
-                  (remote.fetch[0].transport === "ssh" ||
-                    remote.fetch[0].transport === "https") && (
-                    <ProbeControl
-                      id={id}
-                      kind={remote.fetch[0].transport}
-                      remote={remote.name}
-                    />
-                  )}
+                {remote.fetch.length === 1 && (
+                  <RemoteProbes
+                    id={id}
+                    remote={remote.name}
+                    transport={remote.fetch[0].transport}
+                    host={remote.fetch[0].host}
+                    configuredSsh={ssh.clientAvailable && !ssh.customCommand}
+                    credentials={
+                      https.helpers.length > 0 || https.scopedHelpers
+                    }
+                  />
+                )}
               </li>
             ))}
           </ul>
@@ -291,13 +291,18 @@ export function RepositoryInspector({
           {signing.customProgram
             ? "Programa de firma personalizado configurado."
             : signing.defaultProgramAvailable
-              ? "Herramienta predeterminada detectada en PATH."
-              : "Herramienta predeterminada sin detectar en PATH."}
+              ? "Herramienta predeterminada disponible."
+              : "Herramienta predeterminada sin detectar."}
         </p>
         {signing.format === "ssh" &&
           !signing.customProgram &&
           ["public", "file"].includes(signing.keyReference) && (
-            <ProbeControl id={id} kind="signing" />
+            <ProbeControl id={id} kinds={["signing"]} />
+          )}
+        {signing.format === "openpgp" &&
+          signing.defaultProgramAvailable &&
+          signing.keyReference === "reference" && (
+            <ProbeControl id={id} kinds={["open_pgp"]} />
           )}
       </div>
       {ordinary && <HookControl id={id} />}
