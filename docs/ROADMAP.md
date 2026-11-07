@@ -10,6 +10,7 @@ Un desarrollador registra sus perfiles una vez, asigna carpetas y excepciones po
 | --- | --- |
 | [Producto](product/PRD.md) | Actores, casos de uso, ocho módulos y aceptación del MVP |
 | [Arquitectura](architecture/ARCHITECTURE.md) y [datos](architecture/DATABASE.md) | Capas, IPC, dependencias, esquema y persistencia |
+| [GitHub](architecture/GITHUB.md) | Registro, permisos, autorización, credenciales y entregas de fase 6 |
 | [Resolución](architecture/IDENTITY_RESOLUTION.md) y [configuración Git](architecture/GIT_CONFIGURATION.md) | Identidad esperada, estado efectivo, escrituras y recuperación |
 | [Seguridad](security/SECURITY.md) y [autenticación](security/AUTHENTICATION.md) | Amenazas, límites, SSH, HTTPS, firma y OAuth |
 | [UX](ux/UX.md) | Flujos, dirección visual y validación |
@@ -64,3 +65,7 @@ Fase completada para los candidatos locales de v0.1.0. Incluye Inicio, vista pre
 ## Estado de la fase 5
 
 El Inspector muestra la rama, el estado del índice y las modificaciones rastreadas sin preparar cuando puede comprobarlas de forma aislada. Ofrece lectura HTTPS anónima o con credenciales existentes, SSH directo o con una ruta configurada y firma de desafíos mediante SSH u OpenPGP. El hook pre-commit voluntario admite aviso, bloqueo y retirada protegida. Los formatos de credenciales, directivas SSH y referencias de firma compatibles se detallan en la especificación. [Alcance del diagnóstico](security/AUTHENTICATION.md)
+
+## Estado de la fase 6
+
+Iniciada con la entrega 6.0. Se adopta GitHub App, Device Flow y permisos de repositorio de lectura. La especificación define el registro de desarrollo, la autorización y renovación, los almacenes seguros, la desconexión y las siguientes entregas. El próximo paso de implementación es 6.1, con el Client ID público del registro de desarrollo. [Especificación de GitHub](architecture/GITHUB.md)

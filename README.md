@@ -16,6 +16,8 @@ En un repositorio del inventario, **Abrir Inspector** muestra la rama, el estado
 
 Desde el Inspector puedes revisar y confirmar una lectura remota por SSH directo o configurado, o por HTTPS anónimo o con credenciales existentes. También puedes comprobar una firma SSH u OpenPGP e instalar el hook `pre-commit` para la identidad revisada. El hook ofrece aviso o bloqueo y puede retirarse desde el Inspector o Actividad. [Modalidades y compatibilidad](docs/security/AUTHENTICATION.md#comprobaciones-explícitas)
 
+La fase 6 comienza con la decisión de GitHub App y Device Flow. La [guía de registro de desarrollo](docs/architecture/GITHUB.md#registro-para-desarrollo) prepara el Client ID público y los permisos para implementar la conexión de cuentas.
+
 ## Ejecutar en desarrollo
 
 Instala Node.js 24, npm y Rust mediante rustup. El archivo `rust-toolchain.toml` selecciona Rust y sus componentes de formato y lint.
