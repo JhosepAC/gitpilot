@@ -32,9 +32,16 @@ pub(crate) async fn github_session(
 #[tauri::command]
 pub(crate) async fn github_start(
     foundation: State<'_, Foundation>,
+    github_id: Option<i64>,
 ) -> Result<FlowStatus, GithubError> {
-    foundation.database().map_err(|_| GithubError::Storage)?;
-    foundation.github.start().await
+    foundation
+        .github
+        .begin(
+            foundation.database().map_err(|_| GithubError::Storage)?,
+            app(&foundation)?,
+            github_id,
+        )
+        .await
 }
 
 #[tauri::command]
@@ -63,14 +70,51 @@ pub(crate) async fn github_cancel(
 #[tauri::command]
 pub(crate) async fn github_check(
     foundation: State<'_, Foundation>,
+    github_id: i64,
 ) -> Result<AccountStatus, GithubError> {
     foundation
         .github
         .check(
             foundation.database().map_err(|_| GithubError::Storage)?,
             app(&foundation)?,
+            github_id,
         )
         .await
+}
+
+#[tauri::command]
+pub(crate) async fn github_disconnect(
+    foundation: State<'_, Foundation>,
+    github_id: i64,
+) -> Result<AccountStatus, GithubError> {
+    foundation
+        .github
+        .disconnect(
+            foundation.database().map_err(|_| GithubError::Storage)?,
+            app(&foundation)?,
+            github_id,
+        )
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn github_revocation_reviewed(
+    foundation: State<'_, Foundation>,
+    github_id: i64,
+) -> Result<AccountStatus, GithubError> {
+    foundation
+        .github
+        .acknowledge_revocation(
+            foundation.database().map_err(|_| GithubError::Storage)?,
+            app(&foundation)?,
+            github_id,
+        )
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn github_open_authorizations() -> Result<(), GithubError> {
+    open_github(github::AUTHORIZATIONS_URI).await
 }
 
 #[tauri::command]
@@ -81,16 +125,20 @@ pub(crate) async fn github_open_verification(
     if !foundation.github.can_open(&session_id).await {
         return Err(GithubError::Stale);
     }
+    open_github(github::VERIFICATION_URI).await
+}
+
+async fn open_github(url: &'static str) -> Result<(), GithubError> {
     let mut command = if cfg!(windows) {
         let system = std::env::var_os("SystemRoot").ok_or(GithubError::Unavailable)?;
         let mut command = tokio::process::Command::new(
             std::path::PathBuf::from(system).join("System32/rundll32.exe"),
         );
-        command.args(["url.dll,FileProtocolHandler", github::VERIFICATION_URI]);
+        command.args(["url.dll,FileProtocolHandler", url]);
         command
     } else {
         let mut command = tokio::process::Command::new("/usr/bin/xdg-open");
-        command.arg(github::VERIFICATION_URI);
+        command.arg(url);
         command
     };
     let (status, _) =

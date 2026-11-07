@@ -10,10 +10,11 @@ use tokio::{
 use zeroize::Zeroizing;
 
 pub(crate) use super::github_accounts::AccountStatus;
-use super::github_accounts::{self, Credential};
+use super::github_accounts::{self, Accounts, Credential, ExpectedAccount};
 
 pub(crate) const CLIENT_ID: &str = "Iv23libwtluOIgGw4BuU";
 pub(crate) const VERIFICATION_URI: &str = "https://github.com/login/device";
+pub(crate) const AUTHORIZATIONS_URI: &str = "https://github.com/settings/apps/authorizations";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -32,6 +33,7 @@ pub(crate) enum GithubError {
     DifferentAccount,
     NotConnected,
     RateLimited,
+    RenewalUncertain,
 }
 
 impl From<sqlx::Error> for GithubError {
@@ -48,6 +50,7 @@ pub(crate) struct FlowStatus {
     user_code: Option<String>,
     expires_in: u64,
     retry_after_ms: u64,
+    github_id: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -88,6 +91,7 @@ struct Session {
     interval: Duration,
     in_flight: bool,
     cancel: watch::Sender<bool>,
+    expected: Option<ExpectedAccount>,
 }
 
 impl Session {
@@ -109,6 +113,7 @@ impl Session {
                 .saturating_duration_since(now)
                 .as_millis()
                 .max(500) as u64,
+            github_id: None,
         }
     }
 }
@@ -122,12 +127,12 @@ pub(crate) struct Github {
 
 enum Work {
     Device,
-    Token(Zeroizing<String>),
+    Token(Zeroizing<String>, Option<ExpectedAccount>),
 }
 enum Outcome {
     Device(Device),
     Waiting(bool),
-    Connected,
+    Connected(i64),
 }
 
 impl Github {
@@ -162,7 +167,31 @@ impl Github {
         state.as_ref().map(Session::status)
     }
 
-    pub(crate) async fn start(&self) -> Result<FlowStatus, GithubError> {
+    pub(crate) async fn begin(
+        &self,
+        pool: &SqlitePool,
+        app: &Path,
+        id: Option<i64>,
+    ) -> Result<FlowStatus, GithubError> {
+        let expected = if let Some(id) = id {
+            let account = Accounts::lock(pool, app)?
+                .row(id)
+                .await?
+                .ok_or(GithubError::NotConnected)?;
+            if account.state == "disconnecting" {
+                return Err(GithubError::Busy);
+            }
+            Some(ExpectedAccount {
+                id,
+                reference: account.credential_ref,
+            })
+        } else {
+            None
+        };
+        self.start(expected).await
+    }
+
+    async fn start(&self, expected: Option<ExpectedAccount>) -> Result<FlowStatus, GithubError> {
         if self.client.is_none() {
             return Err(GithubError::Unavailable);
         }
@@ -181,6 +210,7 @@ impl Github {
             interval: Duration::from_secs(5),
             in_flight: false,
             cancel,
+            expected,
         };
         let status = session.status();
         *state = Some(session);
@@ -225,7 +255,7 @@ impl Github {
             }
             session.in_flight = true;
             let work = session.device.as_ref().map_or(Work::Device, |device| {
-                Work::Token(device.device_code.clone())
+                Work::Token(device.device_code.clone(), session.expected.clone())
             });
             (work, session.cancel.subscribe(), session.deadline)
         };
@@ -257,7 +287,7 @@ impl Github {
                 session.next_poll = Instant::now() + session.interval;
                 Ok(session.status())
             }
-            Ok(Outcome::Connected) => {
+            Ok(Outcome::Connected(id_from_github)) => {
                 *state = None;
                 Ok(FlowStatus {
                     session_id: id.into(),
@@ -265,6 +295,7 @@ impl Github {
                     user_code: None,
                     expires_in: 0,
                     retry_after_ms: 0,
+                    github_id: Some(id_from_github),
                 })
             }
             Err(GithubError::Network) => {
@@ -315,7 +346,7 @@ impl Github {
                 }
                 Ok(Outcome::Device(device))
             }
-            Work::Token(code) => {
+            Work::Token(code, expected) => {
                 let received_at = github_accounts::now()?;
                 let bytes = response(
                     client
@@ -335,16 +366,7 @@ impl Github {
                         _ => Err(oauth_error(&error.error)),
                     };
                 }
-                let tokens: Tokens = decode(&bytes)?;
-                if tokens.token_type != "bearer"
-                    || !valid_token(&tokens.access_token, "ghu_")
-                    || !valid_token(&tokens.refresh_token, "ghr_")
-                    || tokens.scope.as_ref().is_some_and(|scope| !scope.is_empty())
-                    || !(60..=86_400).contains(&tokens.expires_in)
-                    || !(60..=31_622_400).contains(&tokens.refresh_token_expires_in)
-                {
-                    return Err(GithubError::Protocol);
-                }
+                let tokens = parse_tokens(&bytes)?;
                 let user = self.user(&tokens.access_token).await.map_err(|error| {
                     if error == GithubError::Network {
                         GithubError::Unavailable
@@ -352,16 +374,11 @@ impl Github {
                         error
                     }
                 })?;
-                let credential = Credential {
-                    access_token: tokens.access_token,
-                    refresh_token: tokens.refresh_token,
-                    github_id: user.id,
-                    expires_at: received_at + tokens.expires_in as i64,
-                    refresh_expires_at: received_at + tokens.refresh_token_expires_in as i64,
-                    client_id: CLIENT_ID.into(),
-                };
-                github_accounts::save(pool, app, &user.login, &credential).await?;
-                Ok(Outcome::Connected)
+                let credential = tokens.credential(user.id, received_at);
+                Accounts::lock(pool, app)?
+                    .save(&user.login, &credential, expected.as_ref())
+                    .await?;
+                Ok(Outcome::Connected(user.id))
             }
         }
     }
@@ -398,14 +415,109 @@ impl Github {
         &self,
         pool: &SqlitePool,
         app: &Path,
+        id: i64,
     ) -> Result<AccountStatus, GithubError> {
-        let (account, credential) = github_accounts::credentials(pool, app).await?;
-        let user = self.user(&credential.access_token).await?;
+        let store = Accounts::lock(pool, app)?;
+        let account = store.row(id).await?.ok_or(GithubError::NotConnected)?;
+        let time = github_accounts::now()?;
+        let (credential, rotation) = match account.state.as_str() {
+            "active" => {
+                let current = store.read(&account, &account.credential_ref).await?;
+                if current.expires_at > time + 60 {
+                    (current, None)
+                } else {
+                    if current.refresh_expires_at <= time {
+                        store.require_authorization(id).await?;
+                        return Err(GithubError::Expired);
+                    }
+                    let reference = store.prepare_refresh(&account).await?;
+                    let credential = match self.refresh(&current, time).await {
+                        Ok(credential) => credential,
+                        Err(error) => {
+                            store.require_authorization(id).await?;
+                            return Err(match error {
+                                GithubError::Expired => GithubError::Expired,
+                                _ => GithubError::RenewalUncertain,
+                            });
+                        }
+                    };
+                    store.write(&reference, &credential).await?;
+                    (credential, Some(reference))
+                }
+            }
+            "refreshing" => {
+                // A pending rotation can use its staged result, never its old refresh token.
+                let reference = account.refresh_ref.clone().ok_or(GithubError::Storage)?;
+                let credential = store
+                    .read(&account, &reference)
+                    .await
+                    .map_err(|_| GithubError::RenewalUncertain)?;
+                if credential.expires_at <= time {
+                    store.require_authorization(id).await?;
+                    return Err(GithubError::Expired);
+                }
+                (credential, Some(reference))
+            }
+            "reauthorize" => return Err(GithubError::Expired),
+            _ => return Err(GithubError::Busy),
+        };
+        let user = match self.user(&credential.access_token).await {
+            Ok(user) => user,
+            Err(GithubError::NotConnected) => {
+                store.require_authorization(id).await?;
+                return Err(GithubError::NotConnected);
+            }
+            Err(error) => return Err(error),
+        };
         if account.github_id != user.id {
+            store.require_authorization(id).await?;
             return Err(GithubError::DifferentAccount);
         }
-        github_accounts::mark_verified(pool, &account, &user.login).await?;
-        github_accounts::status(pool, app).await
+        if let Some(reference) = rotation {
+            store.activate(&reference, &user.login, &credential).await?;
+        } else {
+            store.mark_verified(&account, &user.login).await?;
+        }
+        store.status().await
+    }
+
+    async fn refresh(&self, current: &Credential, time: i64) -> Result<Credential, GithubError> {
+        let bytes = response(
+            self.client
+                .as_ref()
+                .ok_or(GithubError::Unavailable)?
+                .post(format!("{}/login/oauth/access_token", self.oauth_base))
+                .header(header::ACCEPT, "application/json")
+                .form(&[
+                    ("client_id", CLIENT_ID),
+                    ("grant_type", "refresh_token"),
+                    ("refresh_token", current.refresh_token.as_str()),
+                ]),
+        )
+        .await?;
+        reject_oauth_error(&bytes)?;
+        Ok(parse_tokens(&bytes)?.credential(current.github_id, time))
+    }
+
+    pub(crate) async fn disconnect(
+        &self,
+        pool: &SqlitePool,
+        app: &Path,
+        id: i64,
+    ) -> Result<AccountStatus, GithubError> {
+        {
+            let mut state = self.session.lock().await;
+            if state
+                .as_ref()
+                .and_then(|session| session.expected.as_ref())
+                .is_some_and(|expected| expected.id == id)
+            {
+                if let Some(session) = state.take() {
+                    let _ = session.cancel.send(true);
+                }
+            }
+        }
+        Accounts::lock(pool, app)?.disconnect(id).await
     }
 
     pub(crate) async fn account(
@@ -413,8 +525,44 @@ impl Github {
         pool: &SqlitePool,
         app: &Path,
     ) -> Result<AccountStatus, GithubError> {
-        github_accounts::status(pool, app).await
+        Accounts::lock(pool, app)?.status().await
     }
+
+    pub(crate) async fn acknowledge_revocation(
+        &self,
+        pool: &SqlitePool,
+        app: &Path,
+        id: i64,
+    ) -> Result<AccountStatus, GithubError> {
+        Accounts::lock(pool, app)?.acknowledge_revocation(id).await
+    }
+}
+
+impl Tokens {
+    fn credential(self, github_id: i64, time: i64) -> Credential {
+        Credential {
+            access_token: self.access_token,
+            refresh_token: self.refresh_token,
+            github_id,
+            expires_at: time + self.expires_in as i64,
+            refresh_expires_at: time + self.refresh_token_expires_in as i64,
+            client_id: CLIENT_ID.into(),
+        }
+    }
+}
+
+fn parse_tokens(bytes: &[u8]) -> Result<Tokens, GithubError> {
+    let tokens: Tokens = decode(bytes)?;
+    if tokens.token_type != "bearer"
+        || !valid_token(&tokens.access_token, "ghu_")
+        || !valid_token(&tokens.refresh_token, "ghr_")
+        || tokens.scope.as_ref().is_some_and(|scope| !scope.is_empty())
+        || !(60..=86_400).contains(&tokens.expires_in)
+        || !(60..=31_622_400).contains(&tokens.refresh_token_expires_in)
+    {
+        return Err(GithubError::Protocol);
+    }
+    Ok(tokens)
 }
 
 fn valid_token(value: &str, prefix: &str) -> bool {
@@ -439,7 +587,7 @@ fn reject_oauth_error(bytes: &[u8]) -> Result<(), GithubError> {
 fn oauth_error(value: &str) -> GithubError {
     match value {
         "access_denied" => GithubError::Denied,
-        "expired_token" | "bad_verification_code" => GithubError::Expired,
+        "expired_token" | "bad_verification_code" | "bad_refresh_token" => GithubError::Expired,
         "incorrect_client_credentials" | "device_flow_disabled" | "unauthorized_client" => {
             GithubError::InvalidApp
         }
@@ -523,6 +671,7 @@ mod tests {
                         }
                     }
                 };
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(2)))
                     .unwrap();
@@ -588,6 +737,49 @@ mod tests {
     }
 
     #[test]
+    fn migrates_the_first_account_and_keeps_its_credential_reference() {
+        tauri::async_runtime::block_on(async {
+            let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+            sqlx::raw_sql(include_str!(
+                "../../migrations/202611070001_github_account.sql"
+            ))
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO github_credentials (reference, state) VALUES ('legacy', 'active')",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query("INSERT INTO github_accounts (slot, client_id, github_id, login, expires_at, credential_ref, verified_at) VALUES (1, ?, 42, 'first', 123, 'legacy', 100)")
+                .bind(CLIENT_ID)
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::raw_sql(include_str!(
+                "../../migrations/202611070002_github_accounts.sql"
+            ))
+            .execute(&pool)
+            .await
+            .unwrap();
+            let directory = tempfile::tempdir().unwrap();
+            let store = Accounts::lock(&pool, directory.path()).unwrap();
+            let account = store.row(42).await.unwrap().unwrap();
+            assert_eq!(account.credential_ref, "legacy");
+            assert_eq!((account.expires_at, account.verified_at), (123, 100));
+            assert_eq!(account.state, "active");
+            let ownership: (String, i64) = sqlx::query_as(
+                "SELECT client_id, github_id FROM github_credentials WHERE reference = 'legacy'",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(ownership, (CLIENT_ID.into(), 42));
+        });
+    }
+
+    #[test]
     fn polling_respects_wait_slowdown_and_denial() {
         tauri::async_runtime::block_on(async {
             let server = server(
@@ -611,8 +803,8 @@ mod tests {
             let service = fixture(&server);
             let directory = tempfile::tempdir().unwrap();
             let pool = super::super::storage::open(directory.path()).await.unwrap();
-            let id = service.start().await.unwrap().session_id;
-            assert!(matches!(service.start().await, Err(GithubError::Busy)));
+            let id = service.start(None).await.unwrap().session_id;
+            assert!(matches!(service.start(None).await, Err(GithubError::Busy)));
             let pending = service.poll(&pool, directory.path(), &id).await.unwrap();
             assert_eq!(pending.user_code.as_deref(), Some("ABCD-1234"));
             let ipc = serde_json::to_string(&pending).unwrap();
@@ -630,7 +822,7 @@ mod tests {
                 Err(GithubError::Denied)
             ));
             assert!(service.current().await.is_none());
-            let id = service.start().await.unwrap().session_id;
+            let id = service.start(None).await.unwrap().session_id;
             service.session.lock().await.as_mut().unwrap().deadline = Instant::now();
             assert!(matches!(
                 service.poll(&pool, directory.path(), &id).await,
@@ -650,7 +842,7 @@ mod tests {
             let service = Arc::new(fixture(&server));
             let directory = Arc::new(tempfile::tempdir().unwrap());
             let pool = super::super::storage::open(directory.path()).await.unwrap();
-            let id = service.start().await.unwrap().session_id;
+            let id = service.start(None).await.unwrap().session_id;
             let job = {
                 let (service, pool, directory, id) =
                     (service.clone(), pool.clone(), directory.clone(), id.clone());
@@ -690,7 +882,7 @@ mod tests {
             let service = fixture(&server);
             let directory = tempfile::tempdir().unwrap();
             let pool = super::super::storage::open(directory.path()).await.unwrap();
-            let id = service.start().await.unwrap().session_id;
+            let id = service.start(None).await.unwrap().session_id;
             assert!(matches!(
                 service.poll(&pool, directory.path(), &id).await,
                 Err(GithubError::Protocol)
@@ -726,7 +918,7 @@ mod tests {
             let service = fixture(&server);
             let directory = tempfile::tempdir().unwrap();
             let pool = super::super::storage::open(directory.path()).await.unwrap();
-            let id = service.start().await.unwrap().session_id;
+            let id = service.start(None).await.unwrap().session_id;
             service.poll(&pool, directory.path(), &id).await.unwrap();
             due(&service).await;
             assert_eq!(
@@ -748,7 +940,7 @@ mod tests {
                     .unwrap();
             pool.close().await;
             let pool = super::super::storage::open(directory.path()).await.unwrap();
-            let checked = service.check(&pool, directory.path()).await.unwrap();
+            let checked = service.check(&pool, directory.path(), 42).await.unwrap();
             assert!(serde_json::to_string(&checked)
                 .unwrap()
                 .contains("fixture-renamed"));
@@ -776,6 +968,99 @@ mod tests {
             assert!(!String::from_utf8_lossy(&database).contains("ghu_fixture"));
             vault.delete(&reference).await.unwrap();
             assert!(vault.read(&reference).await.is_err());
+            pool.close().await;
+            server.worker.join().unwrap();
+        });
+    }
+
+    #[test]
+    #[ignore = "requires an isolated OS credential store"]
+    fn rotates_recovers_and_disconnects_only_the_selected_account() {
+        tauri::async_runtime::block_on(async {
+            let rotated = TOKENS.replace("fixture_", "rotated_");
+            let server = server(
+                vec![
+                    ("/login/oauth/access_token", rotated),
+                    ("/user", "{}".into()),
+                    ("/user", r#"{"id":42,"login":"first-renamed"}"#.into()),
+                    ("/login/oauth/access_token", "{}".into()),
+                ],
+                Duration::ZERO,
+            );
+            let service = fixture(&server);
+            let directory = tempfile::tempdir().unwrap();
+            let app = directory.path();
+            let pool = super::super::storage::open(app).await.unwrap();
+            let vault = super::super::github_vault::Vault::new(app);
+            let (old_ref, other_ref) = {
+                let store = Accounts::lock(&pool, app).unwrap();
+                let expired = github_accounts::now().unwrap() - 29_000;
+                for (id, login) in [(42, "first"), (84, "other")] {
+                    let credential = parse_tokens(TOKENS.as_bytes())
+                        .unwrap()
+                        .credential(id, expired);
+                    store.save(login, &credential, None).await.unwrap();
+                }
+                assert!(matches!(
+                    service.check(&pool, app, 42).await,
+                    Err(GithubError::Busy)
+                ));
+                (
+                    store.row(42).await.unwrap().unwrap().credential_ref,
+                    store.row(84).await.unwrap().unwrap().credential_ref,
+                )
+            };
+            assert!(matches!(
+                service.check(&pool, app, 42).await,
+                Err(GithubError::Protocol)
+            ));
+            assert_eq!(server.calls.load(Ordering::SeqCst), 2);
+            let staged_ref = {
+                let store = Accounts::lock(&pool, app).unwrap();
+                let row = store.row(42).await.unwrap().unwrap();
+                assert_eq!(row.state, "refreshing");
+                let staged = row.refresh_ref.clone().unwrap();
+                let credential = store.read(&row, &staged).await.unwrap();
+                assert!(credential.access_token.contains("rotated_access"));
+                staged
+            };
+            pool.close().await;
+            let pool = super::super::storage::open(app).await.unwrap();
+            let status =
+                serde_json::to_value(service.check(&pool, app, 42).await.unwrap()).unwrap();
+            assert_eq!(status["accounts"][0]["login"], "first-renamed");
+            assert_eq!(status["accounts"][1]["login"], "other");
+            assert_eq!(server.calls.load(Ordering::SeqCst), 3);
+            assert!(vault.read(&old_ref).await.is_err());
+            assert!(vault.read(&staged_ref).await.is_ok());
+
+            assert!(matches!(
+                service.check(&pool, app, 84).await,
+                Err(GithubError::RenewalUncertain)
+            ));
+            assert!(matches!(
+                service.check(&pool, app, 84).await,
+                Err(GithubError::Expired)
+            ));
+            assert_eq!(server.calls.load(Ordering::SeqCst), 4);
+
+            let status =
+                serde_json::to_value(service.disconnect(&pool, app, 42).await.unwrap()).unwrap();
+            assert_eq!(status["accounts"].as_array().unwrap().len(), 1);
+            assert_eq!(status["accounts"][0]["githubId"], 84);
+            assert_eq!(status["revocations"][0]["githubId"], 42);
+            assert!(vault.read(&staged_ref).await.is_err());
+            assert!(vault.read(&other_ref).await.is_ok());
+            let status = serde_json::to_value(
+                service
+                    .acknowledge_revocation(&pool, app, 42)
+                    .await
+                    .unwrap(),
+            )
+            .unwrap();
+            assert!(status["revocations"].as_array().unwrap().is_empty());
+            service.disconnect(&pool, app, 84).await.unwrap();
+            assert!(vault.read(&other_ref).await.is_err());
             pool.close().await;
             server.worker.join().unwrap();
         });
