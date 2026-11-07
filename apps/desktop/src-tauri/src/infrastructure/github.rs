@@ -154,7 +154,7 @@ impl Github {
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(15))
-            .user_agent("GitPilot/0.1.0")
+            .user_agent(concat!("GitPilot/", env!("CARGO_PKG_VERSION")))
             .build()
             .ok();
         Self {
