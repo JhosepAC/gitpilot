@@ -95,7 +95,7 @@ Para asociar un remoto, el backend volverá a consultar Git y verificará que el
 | --- | --- | --- |
 | 6.0 | Decisión, permisos, registro y contratos | ADR adoptado, fuentes revisadas y guía disponible. Completada en esta entrega. |
 | 6.1 | Device Flow, cancelación, almacenes seguros y primera cuenta | Implementada. Autorización real en Windows y flujo simulado con Secret Service en Linux. [Evidencia](../testing/TESTING.md#evidencia-de-fase-6--primera-cuenta). |
-| 6.2 | Varias cuentas, renovación y desconexión | Aislamiento por ID, rotación serializada, recuperación y retirada local comprobadas. Revocación remota recorrida por el usuario. |
+| 6.2 | Varias cuentas, fotos de perfil, renovación y desconexión | Aislamiento por ID, rotación serializada, recuperación y retirada local. La revocación remota se realiza en GitHub. [Evidencia](../testing/TESTING.md#evidencia-de-fase-6--ciclo-de-vida-de-cuentas). |
 | 6.3 | Instalaciones, organizaciones y repositorios | Acceso privado y selección de repositorios comprobados, con estados de permisos y SSO. |
 | 6.4 | PR, issues y asociación con el inventario | Paginación, rate limits, aislamiento de caché y cambio externo de remoto comprobados. |
 
@@ -105,9 +105,17 @@ Cada entrega usará una rama breve desde `main` y commits convencionales por res
 
 La pantalla GitHub inicia la autorización mediante una acción del usuario, muestra el código y permite abrir la URL de verificación o cancelar. El backend conserva la sesión temporal y aplica los intervalos con un reloj monotónico. La cancelación interrumpe la petición activa y descarta sus respuestas tardías. Tras el canje se verifica `/user` y se guarda la credencial completa en el almacén del sistema.
 
-La sesión persistida conserva ambos tokens y sus vencimientos para la futura renovación. La interfaz permite comprobar el acceso y volver a autorizar la misma cuenta. Al vencer el access token, esta entrega requiere otra autorización. La conexión de cuentas adicionales, la renovación automática y la desconexión se incorporarán en 6.2.
+La sesión persistida conserva ambos tokens y sus vencimientos. La entrega 6.1 permitía comprobar el acceso y volver a autorizar la misma cuenta.
 
 El journal guarda referencias `pending`, `active` y `retiring`. Las escrituras de credenciales se verifican antes de actualizar la cuenta en SQLite. Las entradas huérfanas se retiran al cargar o guardar la cuenta bajo un lock del sistema. En Linux la retirada comprueba también la ausencia de la entrada, incluida la recuperación de un journal creado antes de escribir el secreto. Una retirada pendiente permanece visible.
+
+## Comportamiento de la entrega 6.2
+
+Cada cuenta se identifica por su ID numérico de GitHub y conserva su propia credencial. La migración mantiene la referencia de la primera cuenta. Una reautorización dirigida comprueba que GitHub devuelva el mismo ID. La foto se solicita a `avatars.githubusercontent.com` con el ID y sin credenciales ni encabezado Referer. La inicial del login ocupa su lugar si la imagen falla.
+
+Mientras la pantalla GitHub está abierta, la cuenta seleccionada se comprueba automáticamente al entrar en el último minuto de vigencia o al seleccionarla si ya venció. La comprobación manual usa la misma operación. Si GitHub devuelve nuevas credenciales, GitPilot las guarda antes de verificar `/user`. Si esa comprobación falla temporalmente, el siguiente intento verifica las credenciales guardadas. Si el canje queda indeterminado y no hay una credencial nueva recuperable, se requiere reautorizar sin repetir el canje con el refresh token anterior. [Rotación de credenciales de usuario](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens)
+
+La desconexión confirmada retira las referencias de la cuenta seleccionada en el almacén del sistema. GitPilot deja un recordatorio y ofrece abrir la pestaña **Authorized GitHub Apps**. El usuario revoca GitPilot con la cuenta correspondiente y puede marcar el recordatorio como revisado. Esa marca registra la revisión local. [Revisión y revocación de GitHub Apps](https://docs.github.com/en/apps/using-github-apps/reviewing-and-revoking-authorization-of-github-apps)
 
 ## Validación requerida
 

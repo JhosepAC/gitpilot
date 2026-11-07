@@ -68,4 +68,4 @@ El Inspector muestra la rama, el estado del índice y las modificaciones rastrea
 
 ## Estado de la fase 6
 
-La entrega 6.1 incorpora Device Flow, cancelación, verificación de la primera cuenta y persistencia en el almacén del SO. Windows completó una autorización real y la comprobación tras reabrir. Linux comprobó el flujo con un servidor simulado y Secret Service aislado. La entrega 6.2 incorporará varias cuentas, renovación y desconexión. [Especificación de GitHub](architecture/GITHUB.md)
+La entrega 6.2 conserva la primera cuenta de 6.1 y permite añadir otras. La pantalla muestra las fotos de perfil y renueva la sesión seleccionada cerca del vencimiento. La desconexión retira las credenciales locales y guía la revocación en GitHub. La siguiente entrega, 6.3, consulta las instalaciones, organizaciones y repositorios autorizados. [Especificación de GitHub](architecture/GITHUB.md)

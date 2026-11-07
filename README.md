@@ -16,7 +16,7 @@ En un repositorio del inventario, **Abrir Inspector** muestra la rama, el estado
 
 Desde el Inspector puedes revisar y confirmar una lectura remota por SSH directo o configurado, o por HTTPS anónimo o con credenciales existentes. También puedes comprobar una firma SSH u OpenPGP e instalar el hook `pre-commit` para la identidad revisada. El hook ofrece aviso o bloqueo y puede retirarse desde el Inspector o Actividad. [Modalidades y compatibilidad](docs/security/AUTHENTICATION.md#comprobaciones-explícitas)
 
-En **GitHub**, pulsa **Conectar con GitHub**, introduce el código en el navegador y confirma la autorización. GitPilot verifica el ID de la cuenta y guarda la sesión en Windows Credential Manager o Linux Secret Service. **Comprobar conexión** verifica la credencial guardada con GitHub. Esta entrega administra la primera cuenta y permite volver a autorizarla al vencer. En Linux se necesitan `secret-tool` y un Secret Service disponible. [Conexión y siguientes entregas](docs/architecture/GITHUB.md)
+En **GitHub**, pulsa **Añadir cuenta**, introduce el código en el navegador con la cuenta elegida y confirma la autorización. Puedes seleccionar cada cuenta por su nombre y foto de perfil. GitPilot guarda las sesiones por separado en Windows Credential Manager o Linux Secret Service y renueva la de la cuenta seleccionada cerca de su vencimiento mientras la pantalla está abierta. **Comprobar conexión** verifica la sesión con GitHub. **Desconectar** retira la sesión de este equipo y ofrece abrir GitHub para revocar la autorización. En Linux se necesitan `secret-tool` y un Secret Service disponible. [Conexión y siguientes entregas](docs/architecture/GITHUB.md)
 
 ## Ejecutar en desarrollo
 
