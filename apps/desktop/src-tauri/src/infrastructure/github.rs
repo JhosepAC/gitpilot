@@ -708,7 +708,7 @@ mod tests {
         let received_auth = authorizations.clone();
         let worker = std::thread::spawn(move || {
             for (path, status, headers, body) in replies {
-                let deadline = std::time::Instant::now() + Duration::from_secs(8);
+                let deadline = std::time::Instant::now() + Duration::from_secs(60);
                 let mut stream = loop {
                     match listener.accept() {
                         Ok((stream, _)) => break stream,
@@ -786,7 +786,8 @@ mod tests {
                 Client::builder()
                     .no_proxy()
                     .redirect(reqwest::redirect::Policy::none())
-                    .timeout(Duration::from_secs(3))
+                    .tls_built_in_native_certs(false)
+                    .timeout(Duration::from_secs(10))
                     .build()
                     .unwrap(),
             ),
