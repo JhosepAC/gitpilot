@@ -9,7 +9,7 @@ colors:
   surface: "#191919"
   selected: "#242424"
   line: "#303030"
-  control-line: "#606060"
+  control-line: "#707070"
   selection-line: "#767676"
   text: "#f1f1f1"
   muted: "#adadad"
@@ -115,7 +115,7 @@ Los negros mate separan regiones por tono y las divisiones finas mantienen la le
 
 - **Naranja Git (`primary`).** Marca, acción principal y foco de teclado. La variante `accent-hover` aclara la acción al pasar el puntero o pulsarla. El texto de la acción principal usa el negro del lienzo.
 - **Negros mate (`canvas`, `rail`, `surface`, `selected`).** El lienzo sostiene el detalle. La barra lateral se distingue por un tono propio y la tarjeta del autor y los controles usan la superficie. El perfil activo tiene un relleno más claro.
-- **Bordes neutros (`line`, `control-line`, `selection-line`).** El primero divide regiones, el segundo delimita controles y el tercero marca el perfil activo (`#767676`).
+- **Bordes neutros (`line`, `control-line`, `selection-line`).** El primero divide regiones, el segundo delimita controles con al menos 3:1 sobre las superficies del tema y el tercero marca el perfil activo (`#767676`).
 - **Texto (`text`, `muted`).** El tono claro identifica títulos, valores y acciones. El gris se usa en descripciones, etiquetas secundarias y metadatos.
 - **Peligro (`danger`).** El rojo claro acompaña el texto de alerta y el verbo de la acción destructiva.
 

@@ -141,7 +141,9 @@ export function IdentitiesPage({
     <main className="identity-shell">
       <header className="identity-heading">
         <div>
-          <h1>{t("Identidades", "Identities")}</h1>
+          <h1 id="workspace-title" tabIndex={-1}>
+            {t("Identidades", "Identities")}
+          </h1>
           <p>{t("Perfiles de autor de Git.", "Git author profiles.")}</p>
         </div>
         {!empty && pane.kind === "detail" && actions}

@@ -356,7 +356,9 @@ export function InventoryPage({
     <main className="identity-shell">
       <header className="identity-heading">
         <div>
-          <h1>{t("Directorios", "Directories")}</h1>
+          <h1 id="workspace-title" tabIndex={-1}>
+            {t("Directorios", "Directories")}
+          </h1>
           <p>
             {t(
               "Repositorios y reglas de identidad locales.",

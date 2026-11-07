@@ -9,7 +9,7 @@
   --surface: #191919;
   --selected: #242424;
   --line: #303030;
-  --control-line: #606060;
+  --control-line: #707070;
   --selection-line: #767676;
   --text: #f1f1f1;
   --muted: #adadad;
@@ -30,6 +30,10 @@
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+#workspace-title {
+  inline-size: fit-content;
 }
 
 .app-brand {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FoundationState } from "./foundation";
 import { readFoundationStatus } from "./foundation";
 import { IdentitiesPage } from "../identities/IdentitiesPage";
@@ -22,6 +22,7 @@ export function App() {
   const [state, setState] = useState<FoundationState>({ kind: "loading" });
   const [workspace, setWorkspace] = useState<Workspace>("identities");
   const [language, setLanguage] = useState<Language>("es");
+  const focusWorkspace = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -48,23 +49,29 @@ export function App() {
     document.documentElement.lang = language;
   }, [language]);
 
+  useLayoutEffect(() => {
+    if (focusWorkspace.current) {
+      document.getElementById("workspace-title")?.focus();
+      focusWorkspace.current = false;
+    }
+  }, [workspace]);
+
+  function navigate(next: Workspace) {
+    if (next === workspace) return;
+    focusWorkspace.current = true;
+    setWorkspace(next);
+  }
+
   if (state.kind === "ready") {
     return (
       <LanguageContext.Provider value={language}>
-        {workspace === "setup" && <SetupPage onNavigate={setWorkspace} />}
-        {workspace === "activity" && <ActivityPage onNavigate={setWorkspace} />}
-        {workspace === "github" && <GithubPage onNavigate={setWorkspace} />}
-        {workspace === "identities" && (
-          <IdentitiesPage onNavigate={setWorkspace} />
-        )}
-        {workspace === "directories" && (
-          <InventoryPage onNavigate={setWorkspace} />
-        )}
+        {workspace === "setup" && <SetupPage onNavigate={navigate} />}
+        {workspace === "activity" && <ActivityPage onNavigate={navigate} />}
+        {workspace === "github" && <GithubPage onNavigate={navigate} />}
+        {workspace === "identities" && <IdentitiesPage onNavigate={navigate} />}
+        {workspace === "directories" && <InventoryPage onNavigate={navigate} />}
         {workspace === "settings" && (
-          <SettingsPage
-            onNavigate={setWorkspace}
-            onLanguageChange={setLanguage}
-          />
+          <SettingsPage onNavigate={navigate} onLanguageChange={setLanguage} />
         )}
       </LanguageContext.Provider>
     );

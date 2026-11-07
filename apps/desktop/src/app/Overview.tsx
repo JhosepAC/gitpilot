@@ -35,7 +35,9 @@ export function Overview({
     <main className="identity-shell">
       <header className="identity-heading">
         <div>
-          <h1>{title}</h1>
+          <h1 id="workspace-title" tabIndex={-1}>
+            {title}
+          </h1>
           <p>{subtitle}</p>
         </div>
       </header>

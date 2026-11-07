@@ -204,8 +204,8 @@ export function SettingsPage({
             </div>
             <p className="panel-intro settings-language-note">
               {t(
-                "El idioma se aplica a la navegación, Inicio, Configuración y Actividad.",
-                "This language applies to navigation, Home, Settings, and Activity.",
+                "Traduce Inicio, Configuración, Actividad y la navegación.",
+                "Applies to Home, Settings, Activity, and navigation.",
               )}
             </p>
           </section>
