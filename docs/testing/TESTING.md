@@ -168,3 +168,32 @@ Esta entrega modifica documentación. Se comprobaron los enlaces internos y el d
 - En WebView2 se rechazó un archivo de versión desconocida, se revisó y canceló una importación y se comprobó el retorno de foco. Después de confirmar, se filtró Actividad, se reabrió GitPilot en inglés y se guardó español desde Configuración. Pasaron la ventana fija de 900 × 600 y el reflujo emulado a 390 px.
 - En WebKitGTK se eligió un JSON desde el selector de archivos, se revisó una ruta ausente, se confirmó y se exportó un archivo nuevo con el selector nativo. Se verificaron el esquema y el contenido del JSON, las dos entradas de Actividad, la reapertura en inglés y la ventana de 900 × 600.
 - Las dos pruebas de interfaz usaron bases locales separadas y archivos Git temporales. La configuración Git coincidió byte a byte antes y después. El alcance inicial del inglés cubre navegación, encabezados, Inicio, Configuración y el listado de Actividad. Los formularios y diagnósticos detallados están en español.
+
+## Evidencia de fase 7 · Validación de la beta
+
+### Rendimiento
+
+Desde `apps/desktop/src-tauri`, ejecuta el fixture con Git disponible en PATH. El proceso de prueba usa un directorio temporal y aísla HOME, SQLite y la configuración Git.
+
+```sh
+cargo test --locked --features custom-protocol beta_probe::scan_and_diagnosis_budget -- --ignored --nocapture
+```
+
+Con las preferencias predeterminadas, el fixture registró 100 repositorios en 10 grupos y recorrió 5 020 entradas, incluidas 4 800 de archivos comunes. El escaneo incluye el guardado en SQLite. El diagnóstico p95 se calcula sobre 30 repositorios con una identidad Git distinta de la esperada. La cancelación se solicitó al recibir el primer aviso de recorrido y conservó los 100 repositorios anteriores.
+
+| Métrica | Presupuesto del fixture | Windows 11 x64, Git 2.55.0.windows.5 | Debian 12 amd64 en Docker, Git 2.39.5 |
+| --- | ---: | ---: | ---: |
+| Escaneo y guardado | ≤ 15 s | 6 073 ms | 516 ms |
+| Publicación en SQLite | Incluida en el escaneo | 14 ms | 33 ms |
+| Diagnóstico p95 | ≤ 1 s | 139 ms | 8 ms |
+| Cancelación y guardado | ≤ 1 s | 8 ms | 12 ms |
+| Memoria residente pico del proceso del fixture | Referencia inicial | 13,2 MiB | 13,5 MiB |
+
+Los tiempos proceden del perfil de pruebas local. La memoria se observó mediante el conjunto de trabajo en Windows y RSS en Debian. El fixture mide la lógica Rust, SQLite y Git. La memoria de los webviews y el rendimiento en unidades de red requieren una medición aparte.
+
+### Accesibilidad y paquetes
+
+- En WebView2, axe-core 4.14.0 ejecutó reglas WCAG A y AA en 12 estados de las pantallas principales. Obtuvo cero infracciones automáticas. Los resultados de contraste pendientes aparecieron en contenido con desplazamiento y se revisaron con los colores del tema. Los bordes de controles pasaron de un contraste mínimo de 2,47:1 a 3,13:1 sobre las superficies probadas. Se verificaron orden de tabulación, retorno de foco, revisión de importación con acciones visibles, movimiento reducido y reflujo a 390 px. El foco se corrigió para llegar al título al cambiar de sección. [Teclado y foco visible en WCAG](https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html)
+- En WebKitGTK se importó y guardó una identidad con el teclado, se registró un directorio, se escaneó un repositorio y se abrió su diagnóstico. Tras reinstalar, la identidad y el repositorio seguían disponibles. Se comprobó que el foco de teclado llegaba al título de Directorios y que el área de contenido seguía en 900 × 600. Las pruebas cubrieron teclado y foco visible. Queda pendiente una revisión con lectores de pantalla.
+- Se instalaron, reinstalaron y desinstalaron el NSIS x64 con un identificador de QA y el paquete Debian amd64 en un contenedor. Se verificó el PNG instalado en Debian y se compararon los archivos de configuración Git de prueba antes y después. Se generaron candidatos locales de v0.1.0 con sumas SHA-256. La firma de distribución y la publicación corresponden a la fase 8.
+- En Windows y Debian pasaron Prettier, ESLint, TypeScript, cuatro pruebas Vitest, formato Rust, Clippy y compilación Tauri. La suite Rust pasó 39 pruebas en Windows y 40 en Debian. El fixture de rendimiento se ejecutó aparte en ambas plataformas.
