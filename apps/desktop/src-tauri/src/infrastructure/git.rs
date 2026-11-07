@@ -4,7 +4,11 @@ use std::{
     process::{ExitStatus, Stdio},
     time::Duration,
 };
-use tokio::{io::AsyncReadExt, process::Command, time::timeout};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    process::Command,
+    time::timeout,
+};
 
 pub(crate) fn executable() -> Option<PathBuf> {
     find_executable("git")
@@ -52,11 +56,46 @@ pub(crate) async fn output(
     command: &mut Command,
     deadline: Duration,
 ) -> std::io::Result<(ExitStatus, Vec<u8>)> {
+    output_with_input(command, deadline, None).await
+}
+
+pub(super) fn isolated(executable: &Path, directory: &Path) -> Command {
+    let mut command = command(executable, directory);
+    for (key, _) in env::vars_os() {
+        let key_name = key.to_string_lossy().to_ascii_uppercase();
+        if key_name.starts_with("GIT_") || key_name.ends_with("_PROXY") || key_name == "SSH_ASKPASS"
+        {
+            command.env_remove(key);
+        }
+    }
+    command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", directory.join("gitpilot-empty-config"))
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env("GIT_ALLOW_PROTOCOL", "")
+        .env(
+            "GIT_CEILING_DIRECTORIES",
+            directory.parent().unwrap_or(directory),
+        );
+    command
+}
+
+pub(super) async fn output_with_input(
+    command: &mut Command,
+    deadline: Duration,
+    input: Option<&[u8]>,
+) -> std::io::Result<(ExitStatus, Vec<u8>)> {
     const OUTPUT_LIMIT: u64 = 32_768;
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let mut child = command
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true)
@@ -66,11 +105,26 @@ pub(crate) async fn output(
             .stdout
             .take()
             .ok_or_else(|| std::io::Error::other("Git stdout unavailable"))?;
-        let mut output = Vec::new();
-        stdout
-            .take(OUTPUT_LIMIT + 1)
-            .read_to_end(&mut output)
-            .await?;
+        let stdin = child.stdin.take();
+        let (read, written) = tokio::join!(
+            async {
+                let mut output = Vec::new();
+                stdout
+                    .take(OUTPUT_LIMIT + 1)
+                    .read_to_end(&mut output)
+                    .await?;
+                Ok::<_, std::io::Error>(output)
+            },
+            async {
+                if let (Some(mut stdin), Some(input)) = (stdin, input) {
+                    stdin.write_all(input).await?;
+                    stdin.shutdown().await?;
+                }
+                Ok::<_, std::io::Error>(())
+            }
+        );
+        let output = read?;
+        written?;
         if output.len() as u64 > OUTPUT_LIMIT {
             return Err(std::io::Error::other("Git output limit exceeded"));
         }

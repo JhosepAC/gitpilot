@@ -11,6 +11,7 @@ use super::{
     config_preview::{self, Candidate},
     conflicts, git,
     native_file::{self, GitLock, Snapshot, Stage, Stamp},
+    pre_commit,
 };
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -21,6 +22,7 @@ pub(crate) enum ApplyError {
     UnsafeTarget,
     BackupUnavailable,
     ActiveOperation,
+    IdentityRequired,
     VerificationFailed,
     RecoveryRequired,
     StorageUnavailable,
@@ -36,6 +38,7 @@ impl From<sqlx::Error> for ApplyError {
 struct Operation {
     id: i64,
     repository_id: Option<i64>,
+    is_hook: bool,
     token: String,
     target: String,
     parent_id: String,
@@ -53,25 +56,29 @@ struct Operation {
 pub(crate) struct OperationStatus {
     id: i64,
     local: bool,
+    hook: bool,
     state: String,
     target: String,
     confirmation: Option<String>,
 }
 
-const OPERATION: &str = "SELECT rowid AS id, repository_id, token, target, parent_id, before_stamp,
+const OPERATION: &str =
+    "SELECT rowid AS id, repository_id, is_hook, token, target, parent_id, before_stamp,
     backup, candidate_hash, candidate_id, applied_stamp, recovery_id, state FROM config_operations";
 
 async fn live(
     pool: &SqlitePool,
     repository: Option<i64>,
     operation: Option<i64>,
+    hook: bool,
 ) -> Result<Option<Operation>, ApplyError> {
     Ok(sqlx::query_as(&format!(
         "{OPERATION} WHERE state IN ('preparing', 'applied', 'restoring')
-            AND ((? IS NULL AND repository_id IS ?) OR rowid = ?)"
+            AND ((? IS NULL AND repository_id IS ? AND is_hook = ?) OR rowid = ?)"
     ))
     .bind(operation)
     .bind(repository)
+    .bind(hook)
     .bind(operation)
     .fetch_optional(pool)
     .await?)
@@ -89,7 +96,7 @@ pub(crate) struct ActivityItem {
 
 pub(crate) async fn activity(pool: &SqlitePool) -> Result<Vec<ActivityItem>, ApplyError> {
     Ok(sqlx::query_as(
-        "SELECT rowid AS id, target, state, CASE WHEN repository_id IS NULL THEN 'global' ELSE 'local' END AS scope,
+        "SELECT rowid AS id, target, state, CASE WHEN is_hook = 1 THEN 'hook' WHEN repository_id IS NULL THEN 'global' ELSE 'local' END AS scope,
             COALESCE(updated_at, created_at) AS at FROM config_operations
          UNION ALL
          SELECT -id, path, 'kept', 'local', created_at FROM conflict_decisions
@@ -328,7 +335,18 @@ pub(crate) async fn status(
     pool: &SqlitePool,
     operation: Option<i64>,
 ) -> Result<Option<OperationStatus>, ApplyError> {
-    let Some(operation) = live(pool, None, operation).await? else {
+    status_for(live(pool, None, operation, false).await?)
+}
+
+pub(crate) async fn hook_status(
+    pool: &SqlitePool,
+    repository: i64,
+) -> Result<Option<OperationStatus>, ApplyError> {
+    status_for(live(pool, Some(repository), None, true).await?)
+}
+
+fn status_for(operation: Option<Operation>) -> Result<Option<OperationStatus>, ApplyError> {
+    let Some(operation) = operation else {
         return Ok(None);
     };
     let current = snapshot(Path::new(&operation.target), operation.parent()?)
@@ -345,6 +363,7 @@ pub(crate) async fn status(
     Ok(Some(OperationStatus {
         id: operation.id,
         local: operation.repository_id.is_some(),
+        hook: operation.is_hook,
         state: if operation.state == "applied" && confirmation.is_some() {
             "applied".into()
         } else {
@@ -358,11 +377,22 @@ pub(crate) async fn status(
 enum Plan {
     Global(Box<config_preview::ConfigPreview>),
     Local(Box<conflicts::LocalPreview>),
+    Hook(Box<pre_commit::HookPreview>),
 }
 
 impl Plan {
-    async fn prepare(pool: &SqlitePool, app: &Path, repo: Option<i64>) -> Result<Self, ApplyError> {
+    async fn prepare(
+        pool: &SqlitePool,
+        app: &Path,
+        repo: Option<i64>,
+        mode: Option<pre_commit::HookMode>,
+    ) -> Result<Self, ApplyError> {
         if let Some(id) = repo {
+            if let Some(mode) = mode {
+                return Ok(Self::Hook(Box::new(
+                    pre_commit::preview(pool, id, mode).await?,
+                )));
+            }
             return Ok(Self::Local(Box::new(conflicts::prepare(pool, id).await?)));
         }
         Ok(Self::Global(Box::new(
@@ -376,6 +406,7 @@ impl Plan {
         match self {
             Self::Global(preview) => preview.confirmation(),
             Self::Local(preview) => Some(&preview.confirmation),
+            Self::Hook(preview) => Some(&preview.confirmation),
         }
     }
 
@@ -383,6 +414,7 @@ impl Plan {
         match self {
             Self::Global(preview) => preview.candidate.as_ref(),
             Self::Local(preview) => Some(&preview.candidate),
+            Self::Hook(preview) => Some(&preview.candidate),
         }
     }
 
@@ -393,6 +425,7 @@ impl Plan {
                 .await
                 .map_err(|_| ApplyError::VerificationFailed),
             Self::Local(preview) => preview.verify().await,
+            Self::Hook(preview) => preview.verify().await,
         }
     }
 }
@@ -426,6 +459,7 @@ pub(crate) async fn apply(
     app: &Path,
     confirmation: &str,
     repository: Option<i64>,
+    mode: Option<pre_commit::HookMode>,
 ) -> Result<(), ApplyError> {
     let _application = lock(app)?;
     let blocked: bool = sqlx::query_scalar(
@@ -436,10 +470,13 @@ pub(crate) async fn apply(
     if blocked {
         return Err(ApplyError::RecoveryRequired);
     }
-    if live(pool, repository, None).await?.is_some() {
+    if live(pool, repository, None, mode.is_some())
+        .await?
+        .is_some()
+    {
         return Err(ApplyError::ActiveOperation);
     }
-    let preview = Plan::prepare(pool, app, repository).await?;
+    let preview = Plan::prepare(pool, app, repository, mode).await?;
     if preview.confirmation() != Some(confirmation) {
         return Err(ApplyError::StalePreview);
     }
@@ -466,14 +503,14 @@ pub(crate) async fn apply(
         None
     };
     sqlx::query(
-        "INSERT INTO config_operations (token, target, parent_id, before_stamp, backup, candidate_hash, repository_id, state)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'preparing')",
+        "INSERT INTO config_operations (token, target, parent_id, before_stamp, backup, candidate_hash, repository_id, is_hook, state)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'preparing')",
     )
     .bind(&token).bind(target.to_str().ok_or(ApplyError::UnsafeTarget)?)
     .bind(encoded(&candidate.parent)?)
     .bind(candidate.before.as_ref().map(encoded).transpose()?)
     .bind(backup)
-    .bind(hex::encode(native_file::digest(&bytes))).bind(repository).execute(pool).await?;
+    .bind(hex::encode(native_file::digest(&bytes))).bind(repository).bind(mode.is_some()).execute(pool).await?;
     let git_lock = match GitLock::acquire(target, &token) {
         Ok(guard) => guard,
         Err(_) => {
@@ -482,7 +519,7 @@ pub(crate) async fn apply(
         }
     };
     let result = async {
-        let checked = Plan::prepare(pool, app, repository).await?;
+        let checked = Plan::prepare(pool, app, repository, mode).await?;
         if checked.confirmation() != Some(confirmation) {
             return Err(ApplyError::StalePreview);
         }
@@ -499,6 +536,9 @@ pub(crate) async fn apply(
             candidate.before.as_ref(),
         )
         .map_err(|_| ApplyError::UnsafeTarget)?;
+        if mode.is_some() {
+            stage.make_executable().map_err(|_| ApplyError::UnsafeTarget)?;
+        }
         sqlx::query("UPDATE config_operations SET candidate_id = ? WHERE token = ?")
             .bind(encoded(&stage.id())?)
             .bind(&token)
@@ -543,7 +583,7 @@ pub(crate) async fn apply(
     }
     .await;
     if result.is_err() {
-        let operation = live(pool, repository, None)
+        let operation = live(pool, repository, None, mode.is_some())
             .await?
             .ok_or(ApplyError::RecoveryRequired)?;
         if recover(pool, &operation, false).await.is_err() {
@@ -561,7 +601,7 @@ pub(crate) async fn restore(
     operation_id: Option<i64>,
 ) -> Result<(), ApplyError> {
     let _application = lock(app)?;
-    let operation = live(pool, None, operation_id)
+    let operation = live(pool, None, operation_id, false)
         .await?
         .ok_or(ApplyError::StalePreview)?;
     let target = Path::new(&operation.target);
@@ -584,7 +624,7 @@ pub(crate) async fn restore(
         return Err(ApplyError::StalePreview);
     }
     set_state(pool, &operation.token, "restoring").await?;
-    let operation = live(pool, None, Some(operation.id))
+    let operation = live(pool, None, Some(operation.id), false)
         .await?
         .ok_or(ApplyError::RecoveryRequired)?;
     recover(pool, &operation, false)
@@ -630,13 +670,13 @@ mod tests {
                     );
                     assert_eq!(fs::read(&target).unwrap(), b"[user]\nname = External\n");
                     assert_eq!(
-                        live(&pool, None, None).await.unwrap().unwrap().state,
+                        live(&pool, None, None, false).await.unwrap().unwrap().state,
                         "preparing"
                     );
                 } else {
                     reconcile(&pool, &app).await.unwrap();
                     assert!(!target.exists());
-                    assert!(live(&pool, None, None).await.unwrap().is_none());
+                    assert!(live(&pool, None, None, false).await.unwrap().is_none());
                 }
             }
         });

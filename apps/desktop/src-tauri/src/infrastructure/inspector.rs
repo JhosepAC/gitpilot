@@ -34,6 +34,7 @@ struct Tree {
     staged: usize,
     untracked: usize,
     conflicts: usize,
+    unstaged: Option<usize>,
 }
 
 #[derive(Serialize, PartialEq, Eq)]
@@ -108,10 +109,19 @@ impl Settings {
     }
 }
 
-async fn run(
+pub(super) async fn run(
     exe: &Path,
     cwd: &Path,
     args: &[&str],
+) -> Result<(std::process::ExitStatus, Vec<u8>), InventoryError> {
+    run_with_input(exe, cwd, args, None).await
+}
+
+async fn run_with_input(
+    exe: &Path,
+    cwd: &Path,
+    args: &[&str],
+    input: Option<&[u8]>,
 ) -> Result<(std::process::ExitStatus, Vec<u8>), InventoryError> {
     let mut command = git::command(exe, cwd);
     // Block transport helpers, optional index writes, filesystem monitors and pager use.
@@ -125,7 +135,7 @@ async fn run(
             "-c",
             "core.untrackedCache=false",
         ]);
-    git::output(command.args(args), GIT_TIME)
+    git::output_with_input(command.args(args), GIT_TIME, input)
         .await
         .map_err(|_| InventoryError::GitReadFailed)
 }
@@ -135,7 +145,7 @@ fn clean(value: &str, limit: usize) -> Option<&str> {
         .then_some(value)
 }
 
-async fn line(exe: &Path, cwd: &Path, args: &[&str]) -> Option<String> {
+pub(super) async fn line(exe: &Path, cwd: &Path, args: &[&str]) -> Option<String> {
     let (status, out) = run(exe, cwd, args).await.ok()?;
     let text = std::str::from_utf8(&out)
         .ok()?
@@ -323,7 +333,7 @@ async fn remotes(exe: &Path, cwd: &Path, config: &Settings) -> (Vec<Remote>, boo
 async fn tree(exe: &Path, cwd: &Path) -> Option<Tree> {
     // Inspect the index and untracked entries without refreshing tracked file contents.
     // A normal status refresh can run clean/process filters from Git configuration.
-    let (staged, untracked, conflicts) = tokio::join!(
+    let (staged, untracked, conflicts, unstaged) = tokio::join!(
         run(
             exe,
             cwd,
@@ -345,6 +355,7 @@ async fn tree(exe: &Path, cwd: &Path) -> Option<Tree> {
             &["ls-files", "--others", "--exclude-standard", "-z", "--"]
         ),
         run(exe, cwd, &["ls-files", "--unmerged", "-z", "--"]),
+        unstaged(exe, cwd),
     );
     let records = |result: Result<(std::process::ExitStatus, Vec<u8>), InventoryError>| {
         result.ok().and_then(|(status, output)| {
@@ -361,7 +372,146 @@ async fn tree(exe: &Path, cwd: &Path) -> Option<Tree> {
         staged: count(records(staged)?),
         untracked: count(records(untracked)?),
         conflicts: paths.len(),
+        unstaged,
     })
+}
+
+async fn unstaged(exe: &Path, cwd: &Path) -> Option<usize> {
+    let (tracked, index, objects, format) = tokio::join!(
+        run(exe, cwd, &["ls-files", "--cached", "-z", "--"]),
+        line(
+            exe,
+            cwd,
+            &["rev-parse", "--path-format=absolute", "--git-path", "index"]
+        ),
+        line(
+            exe,
+            cwd,
+            &[
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-path",
+                "objects"
+            ]
+        ),
+        line(exe, cwd, &["rev-parse", "--show-object-format"]),
+    );
+    let (status, tracked) = tracked.ok()?;
+    if !status.success() {
+        return None;
+    }
+    if tracked.is_empty() {
+        return Some(0);
+    }
+    let (status, attributes) = run_with_input(
+        exe,
+        cwd,
+        &["check-attr", "-z", "--stdin", "filter"],
+        Some(&tracked),
+    )
+    .await
+    .ok()?;
+    if !status.success() || !attributes.ends_with(b"\0") {
+        return None;
+    }
+    let mut fields = attributes[..attributes.len() - 1].split(|byte| *byte == 0);
+    while fields.next().is_some() {
+        if fields.next()? != b"filter" || !matches!(fields.next()?, b"unspecified" | b"unset") {
+            return None;
+        }
+    }
+    let index = PathBuf::from(index?);
+    let objects = PathBuf::from(objects?);
+    if !index.is_absolute() || !objects.is_absolute() {
+        return None;
+    }
+    let config = match format?.as_str() {
+        "sha1" => "[core]\nrepositoryformatversion = 0\n",
+        "sha256" => "[core]\nrepositoryformatversion = 1\n[extensions]\nobjectFormat = sha256\n",
+        _ => return None,
+    };
+    let scratch = tempfile::Builder::new()
+        .prefix("gitpilot-index-")
+        .tempdir()
+        .ok()?;
+    let dir = scratch.path();
+    fs::create_dir(dir.join("refs")).await.ok()?;
+    fs::create_dir(dir.join("objects")).await.ok()?;
+    fs::write(dir.join("HEAD"), b"ref: refs/heads/inspection\n")
+        .await
+        .ok()?;
+    fs::write(dir.join("config"), config).await.ok()?;
+    let (status, settings) = run(
+        exe,
+        cwd,
+        &[
+            "config",
+            "--null",
+            "--get-regexp",
+            r"^core\.(autocrlf|eol|filemode|checkstat|trustctime|symlinks|ignorecase)$",
+        ],
+    )
+    .await
+    .ok()?;
+    if !status.success() && (status.code() != Some(1) || !settings.is_empty()) {
+        return None;
+    }
+    let mut command = git::isolated(exe, dir);
+    command
+        .env("GIT_DIR", dir)
+        .env("GIT_WORK_TREE", cwd)
+        .env("GIT_INDEX_FILE", &index)
+        .env("GIT_OBJECT_DIRECTORY", objects)
+        .args([
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.untrackedCache=false",
+        ]);
+    for entry in std::str::from_utf8(&settings).ok()?.split_terminator('\0') {
+        let (key, value) = entry.split_once('\n').unwrap_or((entry, "true"));
+        let value = value.to_ascii_lowercase();
+        if !matches!(
+            value.as_str(),
+            "true"
+                | "false"
+                | "yes"
+                | "no"
+                | "on"
+                | "off"
+                | "0"
+                | "1"
+                | "input"
+                | "lf"
+                | "crlf"
+                | "native"
+                | "default"
+                | "minimal"
+        ) {
+            return None;
+        }
+        command.arg("-c").arg(format!("{key}={value}"));
+    }
+    let (status, output) = git::output(
+        command.args([
+            "diff-files",
+            "--name-only",
+            "--no-renames",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--ignore-submodules=all",
+            "--diff-filter=ACDMRT",
+            "-z",
+            "--",
+        ]),
+        GIT_TIME,
+    )
+    .await
+    .ok()?;
+    if !status.success() || (!output.is_empty() && !output.ends_with(b"\0")) {
+        return None;
+    }
+    Some(output.iter().filter(|byte| **byte == 0).count())
 }
 
 fn https(config: &Settings) -> Https {
@@ -668,7 +818,7 @@ fn simple_aliases<'a>(text: &'a str, hosts: &BTreeSet<&str>) -> Option<Vec<Alias
     Some(result)
 }
 
-pub(crate) async fn inspect(repository: &Repository) -> Result<Inspector, InventoryError> {
+pub(super) async fn context(repository: &Repository) -> Result<(PathBuf, &Path), InventoryError> {
     if !repository.present {
         return Err(InventoryError::NotFound);
     }
@@ -683,6 +833,11 @@ pub(crate) async fn inspect(repository: &Repository) -> Result<Inspector, Invent
     if discovery::directory_path(Path::new(&git_dir)).await? != repository.git_dir {
         return Err(InventoryError::GitReadFailed);
     }
+    Ok((exe, cwd))
+}
+
+pub(crate) async fn inspect(repository: &Repository) -> Result<Inspector, InventoryError> {
+    let (exe, cwd) = context(repository).await?;
     let (config, home) = tokio::join!(
         settings(&exe, cwd),
         line(
@@ -795,6 +950,7 @@ mod tests {
             fs::write(cwd.join("tracked"), "one").await.unwrap();
             fixture_git(&exe, cwd, &global, &["add", "tracked"]).await;
             fs::write(cwd.join("tracked"), "two").await.unwrap();
+            assert_eq!(unstaged(&exe, cwd).await, Some(1));
             fs::write(cwd.join(".gitattributes"), "tracked filter=external\n")
                 .await
                 .unwrap();
@@ -847,6 +1003,7 @@ mod tests {
             .unwrap();
             assert_eq!(report.branch.as_deref(), Some("inspector-test"));
             assert_eq!(report.tree.as_ref().unwrap().staged, 1);
+            assert_eq!(report.tree.as_ref().unwrap().unstaged, None);
             assert!(report.ssh.custom_command);
             assert!(report.https.scoped_helpers);
             assert_eq!(report.https.helpers, ["manager", "custom"]);

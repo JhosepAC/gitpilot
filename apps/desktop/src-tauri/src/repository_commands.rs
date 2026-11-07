@@ -4,7 +4,10 @@ use tauri::State;
 use crate::{
     application::Foundation,
     error::StorageError,
-    infrastructure::{config_apply, config_preview, conflicts, discovery, inspector, inventory},
+    infrastructure::{
+        config_apply, config_preview, conflicts, discovery, inspector, inspector_probe, inventory,
+        pre_commit,
+    },
     repository::{Directory, DirectoryInventory, IdentityDiagnosis, InventoryError, ScanReport},
 };
 
@@ -15,6 +18,83 @@ pub(crate) async fn inspect_repository(
 ) -> Result<inspector::Inspector, InventoryError> {
     let repository = inventory::repository(foundation.database()?, id).await?;
     inspector::inspect(&repository).await
+}
+
+#[tauri::command]
+pub(crate) async fn preview_pre_commit(
+    foundation: State<'_, Foundation>,
+    id: i64,
+    mode: pre_commit::HookMode,
+) -> Result<pre_commit::HookPreview, config_apply::ApplyError> {
+    let pool = foundation
+        .database()
+        .map_err(|_| config_apply::ApplyError::StorageUnavailable)?;
+    pre_commit::preview(pool, id, mode).await
+}
+
+#[tauri::command]
+pub(crate) async fn pre_commit_status(
+    foundation: State<'_, Foundation>,
+    id: i64,
+) -> Result<Option<config_apply::OperationStatus>, config_apply::ApplyError> {
+    let pool = foundation
+        .database()
+        .map_err(|_| config_apply::ApplyError::StorageUnavailable)?;
+    config_apply::hook_status(pool, id).await
+}
+
+#[tauri::command]
+pub(crate) async fn confirm_pre_commit(
+    foundation: State<'_, Foundation>,
+    id: i64,
+    mode: pre_commit::HookMode,
+    confirmation: String,
+) -> Result<(), config_apply::ApplyError> {
+    let _guard = foundation
+        .inventory_scan
+        .try_lock()
+        .map_err(|_| config_apply::ApplyError::Busy)?;
+    let pool = foundation
+        .database()
+        .map_err(|_| config_apply::ApplyError::StorageUnavailable)?;
+    let app = foundation
+        .directory
+        .as_deref()
+        .ok_or(config_apply::ApplyError::StorageUnavailable)?;
+    config_apply::apply(pool, app, &confirmation, Some(id), Some(mode)).await
+}
+
+#[tauri::command]
+pub(crate) async fn preview_inspector_probe(
+    foundation: State<'_, Foundation>,
+    id: i64,
+    kind: inspector_probe::ProbeKind,
+    remote: Option<String>,
+) -> Result<inspector_probe::ProbePreview, inspector_probe::ProbeError> {
+    let repository =
+        inventory::repository(foundation.database().map_err(InventoryError::from)?, id).await?;
+    inspector_probe::preview(&repository, kind, remote.as_deref()).await
+}
+
+#[tauri::command]
+pub(crate) async fn verify_inspector_probe(
+    foundation: State<'_, Foundation>,
+    id: i64,
+    kind: inspector_probe::ProbeKind,
+    remote: Option<String>,
+    confirmation: String,
+) -> Result<(), inspector_probe::ProbeError> {
+    let _guard = foundation
+        .inventory_scan
+        .try_lock()
+        .map_err(|_| inspector_probe::ProbeError::Unavailable)?;
+    let repository =
+        inventory::repository(foundation.database().map_err(InventoryError::from)?, id).await?;
+    let app = foundation
+        .directory
+        .as_deref()
+        .ok_or(inspector_probe::ProbeError::Unavailable)?;
+    inspector_probe::verify(&repository, app, kind, remote.as_deref(), &confirmation).await
 }
 
 #[tauri::command]
@@ -50,7 +130,7 @@ pub(crate) async fn confirm_native_config(
     if restore {
         config_apply::restore(pool, app, &confirmation, operation_id).await
     } else {
-        config_apply::apply(pool, app, &confirmation, repository_id).await
+        config_apply::apply(pool, app, &confirmation, repository_id, None).await
     }
 }
 

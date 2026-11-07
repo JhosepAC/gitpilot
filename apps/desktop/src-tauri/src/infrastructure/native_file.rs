@@ -387,6 +387,17 @@ pub(super) struct Stage {
 }
 
 impl Stage {
+    pub(super) fn make_executable(&self) -> io::Result<()> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            self.file
+                .as_ref()
+                .ok_or_else(unsafe_path)?
+                .set_permissions(fs::Permissions::from_mode(0o700))?;
+        }
+        Ok(())
+    }
     pub(super) fn create(path: PathBuf, before: Option<&Stamp>) -> io::Result<Self> {
         let file = options()
             .create_new(true)

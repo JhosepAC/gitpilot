@@ -1,4 +1,9 @@
 [[permission]]
 identifier = "allow-inspect-repository"
 description = "Read the branch, index, redacted remotes and local authentication hints for an inventoried repository"
-commands.allow = ["inspect_repository"]
+commands.allow = ["inspect_repository", "preview_inspector_probe", "preview_pre_commit", "pre_commit_status"]
+
+[[permission]]
+identifier = "allow-verify-inspector-probe"
+description = "Perform a confirmed read-only remote access or temporary SSH signature check"
+commands.allow = ["verify_inspector_probe", "confirm_pre_commit"]

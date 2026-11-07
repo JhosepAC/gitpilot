@@ -7,6 +7,8 @@ pub(crate) mod git;
 pub(crate) mod git_identity;
 pub(crate) mod identities;
 pub(crate) mod inspector;
+pub(crate) mod inspector_probe;
 pub(crate) mod inventory;
 mod native_file;
+pub(crate) mod pre_commit;
 pub(crate) mod storage;
