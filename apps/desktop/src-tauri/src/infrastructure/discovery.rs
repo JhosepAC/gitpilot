@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     fs::Metadata,
     path::Path,
     time::{Duration, Instant},
@@ -7,7 +8,7 @@ use std::{
 use tokio::fs;
 
 use crate::repository::{
-    ConfigValue, DiscoveredRepository, InventoryError, ObservedIdentity, ScanReport,
+    ConfigValue, DiscoveredRepository, InventoryError, ObservedIdentity, ScanLimit, ScanReport,
 };
 
 use super::git;
@@ -67,9 +68,22 @@ async fn safe_metadata(path: &Path) -> Option<Metadata> {
     (!is_link(&metadata)).then_some(metadata)
 }
 
+enum Visit {
+    Inspect,
+    Expand,
+}
+
 pub(crate) async fn scan(
     stored_path: &str,
     exclusions: &[String],
+) -> Result<(Vec<DiscoveredRepository>, ScanReport), InventoryError> {
+    scan_with_entry_limit(stored_path, exclusions, MAX_ENTRIES).await
+}
+
+async fn scan_with_entry_limit(
+    stored_path: &str,
+    exclusions: &[String],
+    entry_limit: usize,
 ) -> Result<(Vec<DiscoveredRepository>, ScanReport), InventoryError> {
     let executable = git::executable().ok_or(InventoryError::GitUnavailable)?;
     let registered = Path::new(stored_path);
@@ -87,16 +101,23 @@ pub(crate) async fn scan(
     .await
     .map_err(|_| InventoryError::InvalidPath)??;
     let deadline = Instant::now() + SCAN_TIME;
-    let mut pending = vec![(root.clone(), 0)];
+    let mut pending = VecDeque::from([(root.clone(), 0, Visit::Inspect)]);
     let mut repositories = Vec::new();
     let mut report = ScanReport::default();
     let mut visited = 0;
 
     let walk = tokio::time::timeout(SCAN_TIME, async {
-        'walk: while let Some((directory, depth)) = pending.pop() {
-            if deadline <= Instant::now() || repositories.len() >= MAX_REPOSITORIES {
-                report.partial = true;
+        'walk: while let Some((directory, depth, visit)) = pending.pop_front() {
+            if deadline <= Instant::now() {
+                report.reached(ScanLimit::Time);
                 break;
+            }
+            if repositories.len() >= MAX_REPOSITORIES {
+                report.reached(ScanLimit::Repositories);
+                break;
+            }
+            if matches!(visit, Visit::Expand) && report.limits.contains(&ScanLimit::Entries) {
+                continue;
             }
             let Ok(text) = path_text(&directory) else {
                 report.skipped += 1;
@@ -108,8 +129,15 @@ pub(crate) async fn scan(
             {
                 continue;
             }
-            // Refuse paths swapped to an alias between enumeration and inspection.
-            if !safe_metadata(&directory).await.is_some_and(|m| m.is_dir())
+            // Revalidate the path both before inspecting it and before reading its children.
+            let Ok(metadata) = fs::symlink_metadata(&directory).await else {
+                report.skipped += 1;
+                continue;
+            };
+            if is_link(&metadata) {
+                continue;
+            }
+            if !metadata.is_dir()
                 || !fs::canonicalize(&directory)
                     .await
                     .is_ok_and(|p| p == directory && p.starts_with(&root))
@@ -117,30 +145,33 @@ pub(crate) async fn scan(
                 report.skipped += 1;
                 continue;
             }
-            let git_marker = directory.join(".git");
-            let marker = safe_metadata(&git_marker).await;
-            let bare = marker.is_none()
-                && safe_metadata(&directory.join("HEAD"))
+            if matches!(visit, Visit::Inspect) {
+                let marker = safe_metadata(&directory.join(".git")).await;
+                let bare = marker.is_none()
+                    && safe_metadata(&directory.join("HEAD"))
+                        .await
+                        .is_some_and(|m| m.is_file())
+                    && safe_metadata(&directory.join("objects"))
+                        .await
+                        .is_some_and(|m| m.is_dir());
+                if bare || marker.as_ref().is_some_and(|m| m.is_file() || m.is_dir()) {
+                    match probe(
+                        &executable,
+                        &directory,
+                        deadline,
+                        bare,
+                        marker.is_some_and(|m| m.is_file()),
+                    )
                     .await
-                    .is_some_and(|m| m.is_file())
-                && safe_metadata(&directory.join("objects"))
-                    .await
-                    .is_some_and(|m| m.is_dir());
-            if bare || marker.as_ref().is_some_and(|m| m.is_file() || m.is_dir()) {
-                match probe(
-                    &executable,
-                    &directory,
-                    deadline,
-                    bare,
-                    marker.is_some_and(|m| m.is_file()),
-                )
-                .await
-                {
-                    Ok(repo) => repositories.push(repo),
-                    Err(_) => report.skipped += 1,
+                    {
+                        Ok(repo) => repositories.push(repo),
+                        Err(_) => report.skipped += 1,
+                    }
                 }
-            }
-            if bare {
+                // Queue expansion separately so siblings are verified before exploring descendants.
+                if !bare {
+                    pending.push_back((directory, depth, Visit::Expand));
+                }
                 continue;
             }
             let Ok(mut children) = fs::read_dir(&directory).await else {
@@ -150,21 +181,32 @@ pub(crate) async fn scan(
             loop {
                 match children.next_entry().await {
                     Ok(Some(child)) => {
-                        visited += 1;
-                        if visited >= MAX_ENTRIES || deadline <= Instant::now() {
-                            report.partial = true;
+                        if deadline <= Instant::now() {
+                            report.reached(ScanLimit::Time);
                             break 'walk;
                         }
+                        if visited >= entry_limit {
+                            // Already queued directories can still be verified without enumerating more.
+                            report.reached(ScanLimit::Entries);
+                            break;
+                        }
+                        visited += 1;
                         if child.file_name().eq_ignore_ascii_case(".git") {
                             continue;
                         }
-                        let child = child.path();
-                        match fs::symlink_metadata(&child).await {
-                            Ok(m) if !is_link(&m) && m.is_dir() => {
+                        match child.file_type().await {
+                            Ok(kind) if kind.is_dir() => {
+                                let path = child.path();
                                 if depth < MAX_DEPTH {
-                                    pending.push((child, depth + 1));
+                                    pending.push_back((path, depth + 1, Visit::Inspect));
                                 } else {
-                                    report.partial = true;
+                                    match fs::symlink_metadata(&path).await {
+                                        Ok(m) if !is_link(&m) && m.is_dir() => {
+                                            report.reached(ScanLimit::Depth)
+                                        }
+                                        Err(_) => report.skipped += 1,
+                                        _ => {}
+                                    }
                                 }
                             }
                             Err(_) => report.skipped += 1,
@@ -181,8 +223,11 @@ pub(crate) async fn scan(
         }
     })
     .await;
+    if walk.is_err() {
+        report.reached(ScanLimit::Time);
+    }
     report.found = repositories.len();
-    report.partial |= walk.is_err() || report.skipped > 0;
+    report.partial |= report.skipped > 0;
     Ok((repositories, report))
 }
 
@@ -385,6 +430,37 @@ mod tests {
             .unwrap();
         assert!(status.success(), "git {args:?} failed");
         String::from_utf8(output).unwrap()
+    }
+
+    #[test]
+    fn checks_sibling_repositories_before_a_large_subtree_exhausts_the_budget() {
+        tauri::async_runtime::block_on(async {
+            let temp = tempfile::tempdir().unwrap();
+            let git = git::executable().unwrap();
+            for path in ["alpha", "alpha/nested", "beta", "z-large"] {
+                fixture_git(&git, temp.path(), &["init", "-q", path]).await;
+            }
+            let assets = temp.path().join("z-large/assets");
+            std::fs::create_dir(&assets).unwrap();
+            for index in 0..20 {
+                std::fs::write(assets.join(format!("{index}.txt")), b"fixture").unwrap();
+            }
+            let root = directory_path(temp.path()).await.unwrap();
+            let (repositories, report) = scan_with_entry_limit(&root, &[], 12).await.unwrap();
+            assert!(report.partial);
+            assert!(matches!(report.limits.as_slice(), [ScanLimit::Entries]));
+            assert_eq!(report.skipped, 0);
+            assert_eq!(report.found, 4);
+            for name in ["alpha", "nested", "beta", "z-large"] {
+                assert!(repositories
+                    .iter()
+                    .any(|repo| Path::new(&repo.path).ends_with(name)));
+            }
+
+            let (_, report) = scan_with_entry_limit(&root, &[], 2).await.unwrap();
+            assert!(report.partial);
+            assert_eq!(report.found, 2);
+        });
     }
 
     #[test]

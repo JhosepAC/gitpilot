@@ -57,6 +57,25 @@ pub(crate) struct ScanReport {
     pub(crate) found: usize,
     pub(crate) skipped: usize,
     pub(crate) partial: bool,
+    pub(crate) limits: Vec<ScanLimit>,
+}
+
+#[derive(PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ScanLimit {
+    Time,
+    Entries,
+    Depth,
+    Repositories,
+}
+
+impl ScanReport {
+    pub(crate) fn reached(&mut self, limit: ScanLimit) {
+        self.partial = true;
+        if !self.limits.contains(&limit) {
+            self.limits.push(limit);
+        }
+    }
 }
 
 #[derive(Default, Serialize)]
