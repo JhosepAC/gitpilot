@@ -96,7 +96,7 @@ Para asociar un remoto, el backend volverá a consultar Git y verificará que el
 | 6.0 | Decisión, permisos, registro y contratos | ADR adoptado, fuentes revisadas y guía disponible. Completada en esta entrega. |
 | 6.1 | Device Flow, cancelación, almacenes seguros y primera cuenta | Implementada. Autorización real en Windows y flujo simulado con Secret Service en Linux. [Evidencia](../testing/TESTING.md#evidencia-de-fase-6--primera-cuenta). |
 | 6.2 | Varias cuentas, fotos de perfil, renovación y desconexión | Aislamiento por ID, rotación serializada, recuperación y retirada local. La revocación remota se realiza en GitHub. [Evidencia](../testing/TESTING.md#evidencia-de-fase-6--ciclo-de-vida-de-cuentas). |
-| 6.3 | Instalaciones, organizaciones y repositorios | Acceso privado y selección de repositorios comprobados, con estados de permisos y SSO. |
+| 6.3 | Instalaciones, organizaciones y repositorios | Acceso privado real con una instalación personal y repositorios seleccionados. Paginación, permisos, SSO y aislamiento comprobados con respuestas de prueba. [Evidencia](../testing/TESTING.md#evidencia-de-fase-6--repositorios-autorizados). |
 | 6.4 | PR, issues y asociación con el inventario | Paginación, rate limits, aislamiento de caché y cambio externo de remoto comprobados. |
 
 Cada entrega usará una rama breve desde `main` y commits convencionales por responsabilidad. La fase termina cuando las comprobaciones de escritorio, almacenes, permisos y recuperación de estas entregas pasan en ambas plataformas.
@@ -116,6 +116,14 @@ Cada cuenta se identifica por su ID numérico de GitHub y conserva su propia cre
 Mientras la pantalla GitHub está abierta, la cuenta seleccionada se comprueba automáticamente al entrar en el último minuto de vigencia o al seleccionarla si ya venció. La comprobación manual usa la misma operación. Si GitHub devuelve nuevas credenciales, GitPilot las guarda antes de verificar `/user`. Si esa comprobación falla temporalmente, el siguiente intento verifica las credenciales guardadas. Si el canje queda indeterminado y no hay una credencial nueva recuperable, se requiere reautorizar sin repetir el canje con el refresh token anterior. [Rotación de credenciales de usuario](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens)
 
 La desconexión confirmada retira las referencias de la cuenta seleccionada en el almacén del sistema. GitPilot deja un recordatorio y ofrece abrir la pestaña **Authorized GitHub Apps**. El usuario revoca GitPilot con la cuenta correspondiente y puede marcar el recordatorio como revisado. Esa marca registra la revisión local. [Revisión y revocación de GitHub Apps](https://docs.github.com/en/apps/using-github-apps/reviewing-and-revoking-authorization-of-github-apps)
+
+## Comportamiento de la entrega 6.3
+
+El explorador consulta las instalaciones accesibles de la GitHub App con la credencial de la cuenta seleccionada. Cada instalación indica su propietario, si es personal o de organización y si abarca todos los repositorios o solo los seleccionados. Sus repositorios se muestran con nombre completo, visibilidad y estado de archivo. GitHub aplica los permisos tanto de la instalación como de la cuenta. [Endpoints de instalaciones](https://docs.github.com/en/rest/apps/installations)
+
+Las consultas traen hasta 20 entradas por página. El encabezado `Link` indica si existe otra página y Rust reconstruye la ruta en el host fijo. Los resultados viven en la pantalla y se descartan al cambiar de cuenta o al salir del explorador. La consulta usa la credencial del almacén del sistema y la renueva si hace falta. IPC devuelve metadatos de presentación y errores acotados.
+
+GitPilot distingue sesión vencida, permisos denegados, instalación inaccesible, SSO informado por GitHub y resultados parciales. Cuando GitHub limita las consultas, se conserva en memoria la hora mínima de reintento de esa cuenta. El cálculo respeta `Retry-After` y el restablecimiento del límite principal. Si GitHub no indica un plazo, la espera es de un minuto. [Límites de la API REST](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
 
 ## Validación requerida
 

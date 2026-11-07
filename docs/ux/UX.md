@@ -40,6 +40,8 @@ Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de c
 
 **GitHub.** La lista muestra las cuentas por foto y login y distingue la selección con un fondo mate. La inicial reemplaza la foto si falla la carga. El detalle presenta el ID remoto y las fechas de comprobación y vencimiento. Durante la autorización se muestran el código seleccionable, el destino del navegador y la acción de cancelar. La desconexión confirma qué cuenta se retirará del equipo y muestra la acción remota por separado. Los estados de espera y error se anuncian.
 
+**Instalaciones y repositorios de GitHub.** El explorador ocupa el panel de detalle y conserva la lista de cuentas. Cada fila de instalación muestra su propietario y alcance. Los repositorios aparecen por nombre completo, visibilidad y estado de archivo. Las acciones para volver, cambiar de página y actualizar conservan el contexto de la cuenta. Una lista vacía explica dónde revisar el acceso.
+
 **Ventana.** El área de trabajo es fija de 900 × 600 píxeles lógicos, con minimizar y cerrar mediante los controles nativos. La lista y el detalle se desplazan de forma independiente. El diseño reorganiza los paneles cuando el zoom reduce el espacio de contenido.
 
 ## Criterios visuales y de accesibilidad

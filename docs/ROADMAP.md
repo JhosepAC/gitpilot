@@ -37,7 +37,7 @@ Cada fila se descompone en PR pequeños y ordenados. El hito puede cerrarse cuan
 ## Trunk-based development
 
 - `main` es la única rama permanente. Protegerla cuando exista el primer commit en el remoto, exigir revisión y CI, restringir push directo y force-push. Publicar por tags de versión sobre commits verificados de `main`.
-- Abrir ramas desde `main` con un único objetivo. Usar nombres como `codex/identity-validation` para cambios trabajados con Codex. Objetivo de integración de un día laborable, con dos días como umbral para dividir el trabajo. Actualizar frente al tronco y eliminar la rama al integrar.
+- Abrir ramas desde `main` con un único objetivo. Nombrarlas por el cambio, por ejemplo `feat/identity-validation` o `fix/credential-recovery`. Objetivo de integración de un día laborable, con dos días como umbral para dividir el trabajo. Actualizar frente al tronco y eliminar la rama al integrar.
 - Integrar en orden contratos, implementación probada y exposición del flujo. Si una parte debe aterrizar antes, mantenerla inaccesible o detrás de una bandera con responsable y fecha de retirada. Las migraciones y los flujos habilitados deben seguir funcionando en cada integración.
 - El PR indica el alcance, el requisito, los riesgos, la evidencia y los cambios de documentación. El mantenedor revisa los cambios de Git, seguridad y migraciones. Si falla una validación crítica en `main`, corregir o revertir el cambio con prioridad.
 - Mantener fuera del historial las skills, instrucciones, prompts, índices y notas locales de asistentes. Usar `.gitignore` y revisar `git diff --cached --name-only` antes de cada commit. Agregar en CI una comprobación de rutas rastreadas que cubra los patrones prohibidos, incluso ante un agregado forzado. La documentación de producto y desarrollo vive en `docs/`. Los commits y el push se realizan con autorización del responsable.
@@ -68,4 +68,4 @@ El Inspector muestra la rama, el estado del índice y las modificaciones rastrea
 
 ## Estado de la fase 6
 
-La entrega 6.2 conserva la primera cuenta de 6.1 y permite añadir otras. La pantalla muestra las fotos de perfil y renueva la sesión seleccionada cerca del vencimiento. La desconexión retira las credenciales locales y guía la revocación en GitHub. La siguiente entrega, 6.3, consulta las instalaciones, organizaciones y repositorios autorizados. [Especificación de GitHub](architecture/GITHUB.md)
+La entrega 6.2 administra varias cuentas con fotos de perfil, renovación de sesión y desconexión local. La 6.3 permite consultar las instalaciones personales y de organizaciones y los repositorios autorizados para cada cuenta. La 6.4 incorpora PR, issues y asociación con los remotos del inventario. [Especificación de GitHub](architecture/GITHUB.md)

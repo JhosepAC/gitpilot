@@ -18,6 +18,8 @@ Desde el Inspector puedes revisar y confirmar una lectura remota por SSH directo
 
 En **GitHub**, pulsa **Añadir cuenta**, introduce el código en el navegador con la cuenta elegida y confirma la autorización. Puedes seleccionar cada cuenta por su nombre y foto de perfil. GitPilot guarda las sesiones por separado en Windows Credential Manager o Linux Secret Service y renueva la de la cuenta seleccionada cerca de su vencimiento mientras la pantalla está abierta. **Comprobar conexión** verifica la sesión con GitHub. **Desconectar** retira la sesión de este equipo y ofrece abrir GitHub para revocar la autorización. En Linux se necesitan `secret-tool` y un Secret Service disponible. [Conexión y siguientes entregas](docs/architecture/GITHUB.md)
 
+Para explorar el acceso de la cuenta seleccionada, pulsa **Ver instalaciones** y luego **Ver repositorios**. La lista indica qué instalaciones pertenecen a organizaciones y la visibilidad de cada repositorio. El acceso depende de los repositorios concedidos a GitPilot y de los permisos de esa cuenta en GitHub.
+
 ## Ejecutar en desarrollo
 
 Instala Node.js 24, npm y Rust mediante rustup. El archivo `rust-toolchain.toml` selecciona Rust y sus componentes de formato y lint.
