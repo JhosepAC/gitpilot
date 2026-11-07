@@ -16,9 +16,19 @@ Usar almacenes seguros por plataforma, con Windows Credential Manager y Linux Se
 
 ## Inspector local
 
-- El Inspector revalida la ruta y el Git dir del repositorio registrado. Usa consultas acotadas a referencias, índice y configuración. El índice se lee sin bloqueos opcionales ni monitores externos. La inspección deja fuera los cambios rastreados sin preparar para evitar la lectura de contenidos que podría disparar filtros Git. [Estado de Git](https://git-scm.com/docs/git-status)
+- El Inspector revalida la ruta y el Git dir del repositorio registrado. Lee el índice sin bloqueos opcionales ni monitores externos. Para contar cambios sin preparar, Git compara el árbol con el índice original desde un Git dir temporal con una lista cerrada de ajustes. Los filtros declarados en archivos rastreados, el índice no compatible o un resultado fuera del presupuesto dejan ese conteo sin verificar. [Estado de Git](https://git-scm.com/docs/git-status)
 - Los destinos de lectura y envío provienen de Git y tienen en cuenta sus reglas de reescritura. A la interfaz llegan el nombre del remoto, el transporte y el host. El usuario, contraseña, ruta, consulta y comando de transporte permanecen fuera de la respuesta. [Remotos de Git](https://git-scm.com/docs/git-remote)
 - En SSH se comprueban el cliente en PATH, la presencia de un socket anunciado y los archivos predeterminados o referencias simples dentro de `~/.ssh`. Los alias literales se muestran como indicios del archivo de usuario. Los bloques condicionales, las inclusiones y los proxies requieren revisión manual. La lectura de archivos de clave se limita a sus metadatos y los permisos Unix se muestran como indicios. [Configuración de OpenSSH](https://man.openbsd.org/ssh_config)
 - Para HTTPS se clasifican los helpers generales, se respeta el reinicio de la lista y se indica cuando hay reglas por URL. Los argumentos de los helpers y las credenciales permanecen en el mecanismo configurado. Para firma se muestra la preferencia, formato y tipo de referencia. Una referencia SSH a un archivo simple dentro del directorio local `.ssh` admite comprobación de presencia. [Configuración de Git](https://git-scm.com/docs/git-config)
 
 Las cuentas remotas y la posibilidad efectiva de autenticar o firmar requieren una prueba explícita. El Inspector local prescinde de conexiones, ejecución de helpers, consultas a agentes, programas de firma y escritura de configuración.
+
+## Comprobaciones explícitas
+
+La confirmación liga el repositorio, el destino o la clave pública y el tipo de prueba. SSH y HTTPS consultan `HEAD` con `git ls-remote` en un contexto temporal sin la configuración del repositorio. Se admiten destinos directos de lectura en GitHub, GitLab y Bitbucket. HTTPS usa TLS verificado y lectura anónima, sin redirecciones. SSH usa OpenSSH directo en modo no interactivo y exige un host conocido. Los resultados acreditan la respuesta del remoto al intento de lectura. Los alias, puertos alternativos, helpers de credenciales y comprobaciones de cuenta requieren otra modalidad. [Lectura de referencias remotas](https://git-scm.com/docs/git-ls-remote)
+
+La firma SSH usa una clave pública configurada directamente o un archivo `.pub` simple del directorio SSH de Git. Se firma un desafío temporal con el agente y se comprueba su integridad con OpenSSH. La operación carece de efectos sobre el historial y elimina sus archivos temporales al terminar. [Firma con ssh-keygen](https://man.openbsd.org/ssh-keygen)
+
+## Hook pre-commit
+
+La instalación exige un repositorio ordinario, una identidad esperada y la ruta de hooks predeterminada libre. GitPilot conserva los hooks existentes y los contextos con `core.hooksPath` personalizado. El modo inicial emite un aviso y el bloqueo exige selección y confirmación. La identidad revisada queda en el script hasta retirarlo e instalar una nueva versión. La retirada usa el journal y comprueba la identidad y huella del archivo. Ante una edición externa, Actividad presenta el destino como recuperación pendiente. [Hooks de Git](https://git-scm.com/docs/githooks)

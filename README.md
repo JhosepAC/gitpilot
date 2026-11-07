@@ -14,6 +14,8 @@ Cuando la vista previa se puede verificar, elige **Revisar aplicación** y confi
 
 En un repositorio del inventario, **Abrir Inspector** muestra la rama, el estado del índice, los destinos de lectura y envío y los diagnósticos locales de SSH, HTTPS y firma. Para los remotos se muestran el transporte y el host. La identidad de commit se sigue consultando en el detalle del repositorio.
 
+Desde el Inspector puedes revisar y confirmar una prueba de lectura SSH o HTTPS en un remoto directo compatible, comprobar una firma SSH con el agente o instalar el hook `pre-commit` para la identidad revisada. El hook ofrece aviso o bloqueo y puede retirarse desde el Inspector o Actividad.
+
 ## Ejecutar en desarrollo
 
 Instala Node.js 24, npm y Rust mediante rustup. El archivo `rust-toolchain.toml` selecciona Rust y sus componentes de formato y lint.
