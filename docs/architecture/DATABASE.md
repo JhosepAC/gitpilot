@@ -33,6 +33,8 @@ La migración `202611070002_github_accounts.sql` convierte el slot de la primera
 
 La renovación registra una referencia pendiente antes de solicitar credenciales y la conserva mientras se verifica la identidad devuelta por GitHub. Tras verificarla, una transacción activa la nueva referencia. La reconciliación elimina referencias huérfanas bajo un lock compartido entre instancias. `github_revocations` conserva el ID y el login tras la retirada local hasta que el usuario da por revisada la autorización en GitHub. [Contrato de GitHub](GITHUB.md)
 
+La migración `202611070003_github_remote_links.sql` registra un vínculo por repositorio local y nombre de remoto. Guarda los IDs de la cuenta, instalación y repositorio autorizado, la huella del destino efectivo de lectura y la versión del vínculo. La versión protege el reemplazo y la retirada frente a cambios concurrentes. La eliminación del repositorio local o la desconexión de la cuenta elimina sus vínculos mediante las claves foráneas.
+
 ## Extensiones posteriores
 
 | Tabla o relación | Uso |

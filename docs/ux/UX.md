@@ -42,6 +42,8 @@ Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de c
 
 **Instalaciones y repositorios de GitHub.** El explorador ocupa el panel de detalle y conserva la lista de cuentas. Cada fila de instalación muestra su propietario y alcance. Los repositorios aparecen por nombre completo, visibilidad y estado de archivo. Las acciones para volver, cambiar de página y actualizar conservan el contexto de la cuenta. Una lista vacía explica dónde revisar el acceso.
 
+**Actividad y vínculos de GitHub.** El detalle del repositorio agrupa pull requests, issues y vínculo local. Cada fila de actividad muestra título, número y estado. La confirmación del vínculo repite el repositorio local, el remoto y el destino autorizado. Un cambio de destino muestra «Requiere revisión» en el panel de vínculo y en el Inspector. El Inspector permite retirar la asociación guardada desde el repositorio local.
+
 **Ventana.** El área de trabajo es fija de 900 × 600 píxeles lógicos, con minimizar y cerrar mediante los controles nativos. La lista y el detalle se desplazan de forma independiente. El diseño reorganiza los paneles cuando el zoom reduce el espacio de contenido.
 
 ## Criterios visuales y de accesibilidad

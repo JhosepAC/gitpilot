@@ -1,6 +1,6 @@
 # GitHub · fase 6
 
-La entrega 6.1 implementa la autorización y persistencia de la primera cuenta sobre el [ADR-004](../decisions/ADR-004-autenticacion.md). Los apartados siguientes distinguen el contrato de la fase completa y el comportamiento disponible en esta entrega.
+La integración usa una GitHub App con autorización de usuario por Device Flow según el [ADR-004](../decisions/ADR-004-autenticacion.md). Los apartados siguientes describen los permisos, el ciclo de vida de las cuentas, las consultas y los vínculos locales.
 
 ## Alcance
 
@@ -97,7 +97,7 @@ Para asociar un remoto, el backend volverá a consultar Git y verificará que el
 | 6.1 | Device Flow, cancelación, almacenes seguros y primera cuenta | Implementada. Autorización real en Windows y flujo simulado con Secret Service en Linux. [Evidencia](../testing/TESTING.md#evidencia-de-fase-6--primera-cuenta). |
 | 6.2 | Varias cuentas, fotos de perfil, renovación y desconexión | Aislamiento por ID, rotación serializada, recuperación y retirada local. La revocación remota se realiza en GitHub. [Evidencia](../testing/TESTING.md#evidencia-de-fase-6--ciclo-de-vida-de-cuentas). |
 | 6.3 | Instalaciones, organizaciones y repositorios | Acceso privado real con una instalación personal y repositorios seleccionados. Paginación, permisos, SSO y aislamiento comprobados con respuestas de prueba. [Evidencia](../testing/TESTING.md#evidencia-de-fase-6--repositorios-autorizados). |
-| 6.4 | PR, issues y asociación con el inventario | Paginación, rate limits, aislamiento de caché y cambio externo de remoto comprobados. |
+| 6.4 | PR, issues y asociación con el inventario | Lectura real de PR e issues privados, pruebas de paginación y límites, y revisión de cambios externos en remotos. [Evidencia](../testing/TESTING.md#evidencia-de-fase-6--actividad-y-vínculos). |
 
 Cada entrega usará una rama breve desde `main` y commits convencionales por responsabilidad. La fase termina cuando las comprobaciones de escritorio, almacenes, permisos y recuperación de estas entregas pasan en ambas plataformas.
 
@@ -124,6 +124,12 @@ El explorador consulta las instalaciones accesibles de la GitHub App con la cred
 Las consultas traen hasta 20 entradas por página. El encabezado `Link` indica si existe otra página y Rust reconstruye la ruta en el host fijo. Los resultados viven en la pantalla y se descartan al cambiar de cuenta o al salir del explorador. La consulta usa la credencial del almacén del sistema y la renueva si hace falta. IPC devuelve metadatos de presentación y errores acotados.
 
 GitPilot distingue sesión vencida, permisos denegados, instalación inaccesible, SSO informado por GitHub y resultados parciales. Cuando GitHub limita las consultas, se conserva en memoria la hora mínima de reintento de esa cuenta. El cálculo respeta `Retry-After` y el restablecimiento del límite principal. Si GitHub no indica un plazo, la espera es de un minuto. [Límites de la API REST](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
+
+## Comportamiento de la entrega 6.4
+
+El detalle del repositorio ofrece vistas separadas para pull requests e issues, con paginación y estados. El listado de issues filtra las entradas con `pull_request` y conserva la navegación incluso cuando la página queda vacía. Antes de consultar la actividad, Rust comprueba que el ID siga presente en la página de repositorios de la instalación y toma el nombre de esa respuesta. Si el repositorio se desplazó de página, el usuario lo selecciona de nuevo. Los resultados se descartan al cambiar de cuenta, repositorio o vista. [Pull requests](https://docs.github.com/en/rest/pulls/pulls#list-pull-requests), [issues](https://docs.github.com/en/rest/issues/issues#list-repository-issues)
+
+Para vincular, el usuario selecciona un repositorio local y revisa su remoto. GitPilot admite un destino efectivo de lectura directo a GitHub.com por HTTPS sin credenciales incrustadas o por SSH con usuario `git`. El cliente vuelve a comprobar la instalación y ejecuta `git remote get-url --all` antes de guardar. Conserva el ID del repositorio autorizado y la huella del destino efectivo. Si el destino cambió desde la revisión, rechaza la confirmación. El Inspector permite ver el estado y retirar el vínculo local con la versión revisada, incluso si la cuenta perdió acceso al repositorio remoto.
 
 ## Validación requerida
 

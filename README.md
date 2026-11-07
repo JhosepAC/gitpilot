@@ -20,6 +20,8 @@ En **GitHub**, pulsa **Añadir cuenta**, introduce el código en el navegador co
 
 Para explorar el acceso de la cuenta seleccionada, pulsa **Ver instalaciones** y luego **Ver repositorios**. La lista indica qué instalaciones pertenecen a organizaciones y la visibilidad de cada repositorio. El acceso depende de los repositorios concedidos a GitPilot y de los permisos de esa cuenta en GitHub.
 
+Abre **Ver actividad** en un repositorio para consultar sus pull requests e issues. En **Vínculo local**, selecciona un repositorio del inventario y confirma la asociación con un remoto que apunte al mismo destino. Desde **Directorios → Abrir Inspector → Ver vínculos de GitHub** puedes revisar o retirar una asociación guardada.
+
 ## Ejecutar en desarrollo
 
 Instala Node.js 24, npm y Rust mediante rustup. El archivo `rust-toolchain.toml` selecciona Rust y sus componentes de formato y lint.

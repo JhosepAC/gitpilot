@@ -68,4 +68,4 @@ El Inspector muestra la rama, el estado del índice y las modificaciones rastrea
 
 ## Estado de la fase 6
 
-La entrega 6.2 administra varias cuentas con fotos de perfil, renovación de sesión y desconexión local. La 6.3 permite consultar las instalaciones personales y de organizaciones y los repositorios autorizados para cada cuenta. La 6.4 incorpora PR, issues y asociación con los remotos del inventario. [Especificación de GitHub](architecture/GITHUB.md)
+GitPilot administra cuentas con fotos de perfil, renovación y desconexión local. La fase 6 consulta instalaciones, repositorios autorizados, pull requests e issues. También vincula un repositorio autorizado con el destino de lectura de un remoto del inventario. La fase 7 prepara la beta con preferencias, portabilidad de datos y revisión de accesibilidad y rendimiento. [Especificación de GitHub](architecture/GITHUB.md)
