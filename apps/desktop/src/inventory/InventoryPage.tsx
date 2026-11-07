@@ -19,6 +19,7 @@ import type {
   NativeOperation,
   NativePreview,
   Repository,
+  ScanReport,
 } from "./inventoryApi";
 import "./inventory.css";
 
@@ -28,6 +29,30 @@ const kinds = {
   separate: "Submódulo o Git dir separado",
   bare: "Repositorio bare",
 };
+
+const scanLimitMessages = {
+  time: "Se alcanzó el tiempo máximo.",
+  entries: "Se alcanzó el límite de entradas.",
+  depth: "Se alcanzó la profundidad máxima.",
+  repositories: "Se alcanzó el límite de repositorios.",
+};
+
+function scanSummary({ partial, found, limits, skipped }: ScanReport) {
+  const state = partial ? "Escaneo parcial." : "Escaneo completo.";
+  const verified =
+    found === 1
+      ? "Se verificó 1 repositorio."
+      : `Se verificaron ${found} repositorios.`;
+  const details = limits.map((limit) => scanLimitMessages[limit]);
+  if (skipped > 0) {
+    details.push(
+      skipped === 1
+        ? "Quedó 1 ruta sin verificar."
+        : `Quedaron ${skipped} rutas sin verificar.`,
+    );
+  }
+  return [state, verified, ...details].join(" ");
+}
 
 export function InventoryPage({
   onNavigate,
@@ -189,11 +214,7 @@ export function InventoryPage({
     void run("Escaneando repositorios…", async () => {
       const report = await inventoryApi.scan(root.id);
       await refresh(root.id);
-      setNotice(
-        report.partial
-          ? `Escaneo parcial. Repositorios verificados: ${report.found}. Rutas sin verificar: ${report.skipped}.`
-          : `Escaneo completo. Repositorios encontrados: ${report.found}.`,
-      );
+      setNotice(scanSummary(report));
     });
   }
 

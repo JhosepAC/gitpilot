@@ -95,7 +95,12 @@ export type Diagnosis = {
 };
 
 type Contents = { exclusions: string[]; repositories: Repository[] };
-type ScanReport = { found: number; skipped: number; partial: boolean };
+export type ScanReport = {
+  found: number;
+  skipped: number;
+  partial: boolean;
+  limits: ("time" | "entries" | "depth" | "repositories")[];
+};
 
 export const inventoryApi = {
   directories: () => invoke<Directory[]>("list_directories"),
