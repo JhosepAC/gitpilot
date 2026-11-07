@@ -3,5 +3,5 @@
   "identifier": "main-window",
   "description": "Local main window for storage readiness and identity management",
   "windows": ["main"],
-  "permissions": ["allow-foundation-status", "allow-manage-identities", "allow-manage-inventory", "allow-preview-native-config", "allow-confirm-native-config", "allow-inspect-repository", "allow-verify-inspector-probe", "allow-github-account"]
+  "permissions": ["allow-foundation-status", "allow-manage-identities", "allow-manage-inventory", "allow-preview-native-config", "allow-confirm-native-config", "allow-inspect-repository", "allow-verify-inspector-probe", "allow-github-account", "allow-github-repository-activity"]
 }

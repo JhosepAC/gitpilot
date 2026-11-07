@@ -12,9 +12,15 @@ use zeroize::Zeroizing;
 pub(crate) use super::github_accounts::AccountStatus;
 use super::github_accounts::{self, Accounts, Credential, ExpectedAccount};
 
+#[path = "github_links.rs"]
+mod links;
 #[path = "github_resources.rs"]
 mod resources;
-pub(crate) use resources::{Installation, Repository, ResourceError, ResourcePage};
+pub(crate) use links::{candidates, unlink_remote, RemoteCandidates, RemoteReview};
+pub(crate) use resources::{
+    ActivityItem, ActivityKind, Installation, Repository, RepositoryScope, ResourceError,
+    ResourcePage,
+};
 
 pub(crate) const CLIENT_ID: &str = "Iv23libwtluOIgGw4BuU";
 pub(crate) const VERIFICATION_URI: &str = "https://github.com/login/device";
@@ -1222,6 +1228,80 @@ mod tests {
             assert!(auth[4].contains("other_access"));
             service.disconnect(&pool, app, 42).await.unwrap();
             service.disconnect(&pool, app, 84).await.unwrap();
+            server.worker.join().unwrap();
+        });
+    }
+
+    #[test]
+    #[ignore = "requires an isolated OS credential store"]
+    fn checks_installation_membership_before_activity_and_stops_at_rate_limits() {
+        tauri::async_runtime::block_on(async {
+            let membership = "/user/installations/7/repositories?per_page=20&page=1";
+            let listed = r#"{"repositories":[{"id":10,"full_name":"owner/project","private":true,"archived":false}]}"#;
+            let server = server_with_status(
+                vec![
+                    (membership, 200, "", listed.into()),
+                    ("/repos/owner/project/pulls?state=all&per_page=20&page=1", 200, "", r#"[{"number":2,"title":"Pull request","state":"open","draft":true}]"#.into()),
+                    (membership, 200, "", listed.into()),
+                    ("/repos/owner/project/issues?state=all&per_page=20&page=2", 200,
+                        "Link: <https://example.test/ignored>; rel=\"next\"\r\n",
+                        r#"[{"number":2,"title":"Pull request","state":"open","pull_request":{}},{"number":1,"title":"Issue","state":"closed"}]"#.into()),
+                    (membership, 200, "", r#"{"repositories":[]}"#.into()),
+                    (membership, 200, "X-RateLimit-Remaining: 0\r\n", listed.into()),
+                ],
+                Duration::ZERO,
+            );
+            let service = fixture(&server);
+            let directory = tempfile::tempdir().unwrap();
+            let app = directory.path();
+            let pool = super::super::storage::open(app).await.unwrap();
+            {
+                let store = Accounts::lock(&pool, app).unwrap();
+                let credential = parse_tokens(TOKENS.as_bytes())
+                    .unwrap()
+                    .credential(42, github_accounts::now().unwrap());
+                store.save("owner", &credential, None).await.unwrap();
+            }
+            let scope = RepositoryScope {
+                github_id: 42,
+                installation_id: 7,
+                repository_id: 10,
+                repository_page: 1,
+            };
+            let pulls = service
+                .repository_activity(&pool, app, scope, ActivityKind::Pulls, 1)
+                .await
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(pulls).unwrap()["items"][0]["state"],
+                "draft"
+            );
+            let issues = service
+                .repository_activity(&pool, app, scope, ActivityKind::Issues, 2)
+                .await
+                .unwrap();
+            let issues = serde_json::to_value(issues).unwrap();
+            assert_eq!(issues["items"].as_array().unwrap().len(), 1);
+            assert_eq!(issues["items"][0]["number"], 1);
+            assert_eq!(issues["hasNext"], true);
+            assert!(matches!(
+                service
+                    .repository_activity(&pool, app, scope, ActivityKind::Issues, 1)
+                    .await,
+                Err(ResourceError::Access(
+                    resources::AccessError::RepositoryUnavailable
+                ))
+            ));
+            for _ in 0..2 {
+                assert!(matches!(
+                    service
+                        .repository_activity(&pool, app, scope, ActivityKind::Pulls, 1)
+                        .await,
+                    Err(ResourceError::Limited { .. })
+                ));
+            }
+            assert_eq!(server.calls.load(Ordering::SeqCst), 6);
+            service.disconnect(&pool, app, 42).await.unwrap();
             server.worker.join().unwrap();
         });
     }

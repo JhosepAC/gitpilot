@@ -3,8 +3,8 @@ use tauri::State;
 use crate::{
     application::Foundation,
     infrastructure::github::{
-        self, AccountStatus, FlowStatus, GithubError, Installation, Repository, ResourceError,
-        ResourcePage,
+        self, AccountStatus, ActivityItem, ActivityKind, FlowStatus, GithubError, Installation,
+        RemoteCandidates, RemoteReview, Repository, RepositoryScope, ResourceError, ResourcePage,
     },
 };
 
@@ -119,6 +119,72 @@ pub(crate) async fn github_repositories(
             page,
         )
         .await
+}
+
+#[tauri::command]
+pub(crate) async fn github_repository_activity(
+    foundation: State<'_, Foundation>,
+    scope: RepositoryScope,
+    kind: ActivityKind,
+    page: u32,
+) -> Result<ResourcePage<ActivityItem>, ResourceError> {
+    foundation
+        .github
+        .repository_activity(
+            foundation.database().map_err(|_| GithubError::Storage)?,
+            app(&foundation)?,
+            scope,
+            kind,
+            page,
+        )
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn github_remote_candidates(
+    foundation: State<'_, Foundation>,
+    local_id: i64,
+    scope: Option<RepositoryScope>,
+) -> Result<RemoteCandidates, ResourceError> {
+    github::candidates(
+        foundation.database().map_err(|_| GithubError::Storage)?,
+        local_id,
+        scope,
+    )
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn github_link_remote(
+    foundation: State<'_, Foundation>,
+    scope: RepositoryScope,
+    review: RemoteReview,
+) -> Result<(), ResourceError> {
+    foundation
+        .github
+        .link_remote(
+            foundation.database().map_err(|_| GithubError::Storage)?,
+            app(&foundation)?,
+            scope,
+            review,
+        )
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn github_unlink_remote(
+    foundation: State<'_, Foundation>,
+    local_id: i64,
+    remote: String,
+    version: String,
+) -> Result<(), ResourceError> {
+    github::unlink_remote(
+        foundation.database().map_err(|_| GithubError::Storage)?,
+        local_id,
+        &remote,
+        &version,
+    )
+    .await
 }
 
 #[tauri::command]

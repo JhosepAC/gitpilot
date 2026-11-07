@@ -100,7 +100,7 @@ pub(super) fn allowed_path(path: &str) -> bool {
         })
 }
 
-fn remote_url(value: &str, kind: ProbeKind) -> Option<(String, String)> {
+pub(super) fn remote_url(value: &str, kind: ProbeKind) -> Option<(String, String)> {
     if value.len() > 1024
         || value
             .chars()

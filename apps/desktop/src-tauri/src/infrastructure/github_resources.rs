@@ -1,10 +1,13 @@
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use reqwest::header::{HeaderMap, LINK, RETRY_AFTER};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sqlx::SqlitePool;
+use tokio::sync::MutexGuard;
 
-use super::{decode, github_accounts, response_bytes, valid_login, Accounts, Github, GithubError};
+use super::{
+    decode, github_accounts, response_bytes, valid_login, Accounts, Credential, Github, GithubError,
+};
 
 const PER_PAGE: usize = 20;
 const MAX_PAGE: u32 = 100_000;
@@ -26,11 +29,27 @@ pub(crate) enum AccessError {
     PermissionDenied,
     SsoRequired,
     InstallationUnavailable,
+    RepositoryUnavailable,
+    LocalRepositoryUnavailable,
+    RemoteChanged,
+    LinkChanged,
 }
 
 impl From<GithubError> for ResourceError {
     fn from(error: GithubError) -> Self {
         Self::Account(error)
+    }
+}
+
+impl From<sqlx::Error> for ResourceError {
+    fn from(_: sqlx::Error) -> Self {
+        GithubError::Storage.into()
+    }
+}
+
+impl From<AccessError> for ResourceError {
+    fn from(error: AccessError) -> Self {
+        Self::Access(error)
     }
 }
 
@@ -105,9 +124,61 @@ struct Repositories {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Repository {
     id: i64,
-    full_name: String,
+    pub(super) full_name: String,
     visibility: &'static str,
     archived: bool,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RepositoryScope {
+    pub(super) github_id: i64,
+    pub(super) installation_id: i64,
+    pub(super) repository_id: i64,
+    pub(super) repository_page: u32,
+}
+
+impl RepositoryScope {
+    pub(super) fn validate(self) -> Result<(), GithubError> {
+        if !valid_id(self.github_id)
+            || !valid_id(self.installation_id)
+            || !valid_id(self.repository_id)
+        {
+            return Err(GithubError::Protocol);
+        }
+        validate_page(self.repository_page)
+    }
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ActivityKind {
+    Pulls,
+    Issues,
+}
+
+#[derive(Deserialize)]
+struct RemoteActivity {
+    number: i64,
+    title: String,
+    state: String,
+    #[serde(default)]
+    draft: bool,
+    pull_request: Option<serde::de::IgnoredAny>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct ActivityItem {
+    number: i64,
+    title: String,
+    state: &'static str,
+}
+
+pub(super) struct ResourceSession<'a> {
+    service: &'a Github,
+    store: Accounts<'a>,
+    credential: Credential,
+    limits: MutexGuard<'a, HashMap<i64, i64>>,
 }
 
 #[derive(Deserialize)]
@@ -123,9 +194,10 @@ impl Github {
         github_id: i64,
         page: u32,
     ) -> Result<ResourcePage<Installation>, ResourceError> {
-        let (data, has_next, partial_sso): (Installations, _, _) = self
-            .resource_page(pool, app, github_id, "/user/installations", page)
-            .await?;
+        validate_page(page)?;
+        let mut session = self.resource_session(pool, app, github_id).await?;
+        let (data, has_next, partial_sso): (Installations, _, _) =
+            session.page("/user/installations", page).await?;
         let mut items = Vec::new();
         for remote in data.installations {
             let Some(owner) = remote.account else {
@@ -153,30 +225,45 @@ impl Github {
         installation_id: i64,
         page: u32,
     ) -> Result<ResourcePage<Repository>, ResourceError> {
+        validate_page(page)?;
         if !valid_id(installation_id) {
             return Err(GithubError::Protocol.into());
         }
-        let path = format!("/user/installations/{installation_id}/repositories");
-        let (data, has_next, partial_sso): (Repositories, _, _) = self
-            .resource_page(pool, app, github_id, &path, page)
-            .await?;
-        let items = data
-            .repositories
-            .into_iter()
-            .map(repository)
-            .collect::<Result<_, _>>()?;
-        resource_page(items, has_next, partial_sso)
+        self.resource_session(pool, app, github_id)
+            .await?
+            .repositories(installation_id, page)
+            .await
     }
 
-    async fn resource_page<T: DeserializeOwned>(
+    pub(crate) async fn repository_activity(
         &self,
         pool: &SqlitePool,
         app: &Path,
-        github_id: i64,
-        path: &str,
+        scope: RepositoryScope,
+        kind: ActivityKind,
         page: u32,
-    ) -> Result<(T, bool, bool), ResourceError> {
-        if !valid_id(github_id) || !(1..=MAX_PAGE).contains(&page) {
+    ) -> Result<ResourcePage<ActivityItem>, ResourceError> {
+        validate_page(page)?;
+        scope.validate()?;
+        let mut session = self.resource_session(pool, app, scope.github_id).await?;
+        let repository = session.authorized_repository(scope).await?;
+        let suffix = match kind {
+            ActivityKind::Pulls => "pulls",
+            ActivityKind::Issues => "issues",
+        };
+        let path = format!("/repos/{}/{suffix}?state=all", repository.full_name);
+        let (data, has_next, partial_sso): (Vec<RemoteActivity>, _, _) =
+            session.page(&path, page).await?;
+        activity_page(data, kind, has_next, partial_sso)
+    }
+
+    pub(super) async fn resource_session<'a>(
+        &'a self,
+        pool: &'a SqlitePool,
+        app: &Path,
+        github_id: i64,
+    ) -> Result<ResourceSession<'a>, ResourceError> {
+        if !valid_id(github_id) {
             return Err(GithubError::Protocol.into());
         }
         let mut limits = self.resource_limits.lock().await;
@@ -189,15 +276,71 @@ impl Github {
         }
         let store = Accounts::lock(pool, app)?;
         let credential = self.account_credential(&store, github_id, false).await?;
+        Ok(ResourceSession {
+            service: self,
+            store,
+            credential,
+            limits,
+        })
+    }
+}
+
+impl ResourceSession<'_> {
+    async fn repositories(
+        &mut self,
+        installation_id: i64,
+        page: u32,
+    ) -> Result<ResourcePage<Repository>, ResourceError> {
+        let path = format!("/user/installations/{installation_id}/repositories");
+        let (data, has_next, partial_sso): (Repositories, _, _) = self.page(&path, page).await?;
+        let items = data
+            .repositories
+            .into_iter()
+            .map(repository)
+            .collect::<Result<_, _>>()?;
+        resource_page(items, has_next, partial_sso)
+    }
+
+    pub(super) async fn authorized_repository(
+        &mut self,
+        scope: RepositoryScope,
+    ) -> Result<Repository, ResourceError> {
+        if self.credential.github_id != scope.github_id {
+            return Err(GithubError::Protocol.into());
+        }
+        let page = self
+            .repositories(scope.installation_id, scope.repository_page)
+            .await?;
+        page.items
+            .into_iter()
+            .find(|item| item.id == scope.repository_id)
+            .ok_or(ResourceError::Access(if page.partial_sso {
+                AccessError::SsoRequired
+            } else {
+                AccessError::RepositoryUnavailable
+            }))
+    }
+
+    async fn page<T: DeserializeOwned>(
+        &mut self,
+        path: &str,
+        page: u32,
+    ) -> Result<(T, bool, bool), ResourceError> {
+        let github_id = self.credential.github_id;
+        let now = github_accounts::now()?;
+        if let Some(retry_at) = self.limits.get(&github_id).copied().filter(|at| *at > now) {
+            return Err(ResourceError::Limited { retry_at });
+        }
         let mut response = self
-            .api_get(path, &credential.access_token)?
+            .service
+            .api_get(path, &self.credential.access_token)?
             .query(&[("per_page", PER_PAGE as u32), ("page", page)])
             .send()
             .await
             .map_err(|_| GithubError::Network)?;
         let status = response.status().as_u16();
         if status == 401 {
-            store.require_authorization(github_id).await?;
+            self.store.require_authorization(github_id).await?;
             return Err(GithubError::NotConnected.into());
         }
         if !response.status().is_success() {
@@ -209,17 +352,73 @@ impl Github {
                     Ok(problem) if problem.message.to_ascii_lowercase().contains("secondary rate limit")
                 );
             let now = github_accounts::now()?;
-            let error = response_error(status, response.headers(), now, secondary);
+            let error = match response_error(status, response.headers(), now, secondary) {
+                ResourceError::Access(AccessError::InstallationUnavailable)
+                    if path.starts_with("/repos/") =>
+                {
+                    ResourceError::Access(AccessError::RepositoryUnavailable)
+                }
+                error => error,
+            };
             if let ResourceError::Limited { retry_at } = error {
-                limits.insert(github_id, retry_at);
+                self.limits.insert(github_id, retry_at);
             }
             return Err(error);
+        }
+        if primary_exhausted(response.headers()) {
+            let now = github_accounts::now()?;
+            let retry_at = primary_reset(response.headers(), now).unwrap_or(now + 60);
+            self.limits.insert(github_id, retry_at);
         }
         let has_next = page < MAX_PAGE && next_page(response.headers());
         let partial_sso = sso(response.headers()) == Some("partial-results");
         let bytes = response_bytes(&mut response, 1_048_576).await?;
         Ok((decode(&bytes)?, has_next, partial_sso))
     }
+}
+
+fn validate_page(page: u32) -> Result<(), GithubError> {
+    (1..=MAX_PAGE)
+        .contains(&page)
+        .then_some(())
+        .ok_or(GithubError::Protocol)
+}
+
+fn activity_page(
+    data: Vec<RemoteActivity>,
+    kind: ActivityKind,
+    has_next: bool,
+    partial_sso: bool,
+) -> Result<ResourcePage<ActivityItem>, ResourceError> {
+    if data.len() > PER_PAGE {
+        return Err(GithubError::Protocol.into());
+    }
+    let items = data
+        .into_iter()
+        .filter(|item| matches!(kind, ActivityKind::Pulls) || item.pull_request.is_none())
+        .map(|item| {
+            if !valid_id(item.number) {
+                return Err(GithubError::Protocol);
+            }
+            let state = match item.state.as_str() {
+                "open" if matches!(kind, ActivityKind::Pulls) && item.draft => "draft",
+                "open" => "open",
+                "closed" => "closed",
+                _ => return Err(GithubError::Protocol),
+            };
+            Ok(ActivityItem {
+                number: item.number,
+                title: item
+                    .title
+                    .chars()
+                    .filter(|ch| !ch.is_control())
+                    .take(256)
+                    .collect(),
+                state,
+            })
+        })
+        .collect::<Result<_, _>>()?;
+    resource_page(items, has_next, partial_sso)
 }
 
 fn resource_page<T>(
@@ -238,18 +437,7 @@ fn resource_page<T>(
 }
 
 fn repository(remote: RemoteRepository) -> Result<Repository, GithubError> {
-    let valid_name = remote
-        .full_name
-        .split_once('/')
-        .is_some_and(|(owner, name)| {
-            valid_login(owner)
-                && !name.is_empty()
-                && name.len() <= 100
-                && name
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
-        });
-    if !valid_id(remote.id) || !valid_name {
+    if !valid_id(remote.id) || !valid_full_name(&remote.full_name) {
         return Err(GithubError::Protocol);
     }
     Ok(Repository {
@@ -261,6 +449,17 @@ fn repository(remote: RemoteRepository) -> Result<Repository, GithubError> {
             _ => "public",
         },
         archived: remote.archived,
+    })
+}
+
+pub(super) fn valid_full_name(full_name: &str) -> bool {
+    full_name.split_once('/').is_some_and(|(owner, name)| {
+        valid_login(owner)
+            && !matches!(name, "" | "." | "..")
+            && name.len() <= 100
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
     })
 }
 
@@ -295,27 +494,31 @@ fn next_page(headers: &HeaderMap) -> bool {
         })
 }
 
-fn response_error(status: u16, headers: &HeaderMap, now: i64, secondary: bool) -> ResourceError {
-    let primary = headers
+fn primary_exhausted(headers: &HeaderMap) -> bool {
+    headers
         .get("x-ratelimit-remaining")
-        .is_some_and(|value| value == "0");
+        .is_some_and(|value| value == "0")
+}
+
+fn primary_reset(headers: &HeaderMap, now: i64) -> Option<i64> {
+    let reset = headers
+        .get("x-ratelimit-reset")?
+        .to_str()
+        .ok()?
+        .parse::<i64>()
+        .ok()?;
+    (reset > now).then_some(reset)
+}
+
+fn response_error(status: u16, headers: &HeaderMap, now: i64, secondary: bool) -> ResourceError {
+    let primary = primary_exhausted(headers);
     let retry_after = headers
         .get(RETRY_AFTER)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<i64>().ok())
         .filter(|seconds| *seconds > 0);
     if status == 429 || status == 403 && (primary || secondary || retry_after.is_some()) {
-        let reset = primary
-            .then(|| {
-                headers
-                    .get("x-ratelimit-reset")?
-                    .to_str()
-                    .ok()?
-                    .parse::<i64>()
-                    .ok()
-            })
-            .flatten()
-            .filter(|reset| *reset > now);
+        let reset = primary.then(|| primary_reset(headers, now)).flatten();
         let retry_at = retry_after
             .map(|seconds| now.saturating_add(seconds))
             .into_iter()
@@ -339,6 +542,23 @@ fn response_error(status: u16, headers: &HeaderMap, now: i64, secondary: bool) -
 mod tests {
     use super::*;
     use reqwest::header::HeaderValue;
+
+    #[test]
+    fn keeps_issue_pagination_when_a_page_contains_only_pull_requests() {
+        let payload =
+            br#"[{"number":2,"title":"Example pull request","state":"open","pull_request":{}}]"#;
+        let page =
+            activity_page(decode(payload).unwrap(), ActivityKind::Issues, true, false).unwrap();
+        assert!(page.items.is_empty());
+        assert!(page.has_next);
+
+        let payload = br#"[{"number":3,"title":"A draft","state":"open","draft":true}]"#;
+        let page =
+            activity_page(decode(payload).unwrap(), ActivityKind::Pulls, false, false).unwrap();
+        assert_eq!(page.items[0].state, "draft");
+        assert!(!valid_full_name("owner/.."));
+        assert!(!valid_full_name("owner/name/another"));
+    }
 
     #[test]
     fn distinguishes_sso_permission_and_missing_installation() {
