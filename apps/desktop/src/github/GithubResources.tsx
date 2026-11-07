@@ -1,5 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
+import { GithubRepository } from "./GithubRepository";
+import {
+  describeGithubProblem,
+  GithubPageActions,
+  visibility,
+  type GithubRepositoryItem,
+  type Page,
+  type RepositoryScope,
+} from "./githubResourceUi";
 
 type Installation = {
   id: number;
@@ -9,26 +18,13 @@ type Installation = {
   suspended: boolean;
 };
 
-type Repository = {
-  id: number;
-  fullName: string;
-  visibility: "public" | "private" | "internal";
-  archived: boolean;
-};
-
-type Page<T> = { items: T[]; hasNext: boolean; partialSso: boolean };
 type Query = { installation: Installation | null; page: number };
 type Result = { query: Query } & (
   | { installations: Page<Installation> }
-  | { repositories: Page<Repository> }
+  | { repositories: Page<GithubRepositoryItem> }
   | { problem: unknown }
 );
 
-const visibility = {
-  public: "Público",
-  private: "Privado",
-  internal: "Interno",
-};
 const ownerKind = {
   User: "Cuenta personal",
   Organization: "Organización",
@@ -39,45 +35,6 @@ const selection = {
   selected: "Repositorios seleccionados",
   unknown: "Acceso según GitHub",
 };
-
-const problems: Record<string, string> = {
-  permission_denied:
-    "GitHub denegó el acceso. Revisa los permisos de la instalación.",
-  installation_unavailable:
-    "La instalación dejó de estar disponible o esta cuenta perdió acceso.",
-  sso_required:
-    "GitHub requiere que inicies sesión con el SSO de la organización. Completa el acceso en GitHub y reintenta.",
-  expired: "La sesión venció. Vuelve a la cuenta para autorizarla de nuevo.",
-  not_connected:
-    "GitHub ya no acepta esta sesión. Vuelve a la cuenta para autorizarla.",
-  renewal_uncertain:
-    "No se pudo comprobar la renovación. Vuelve a la cuenta para revisar la sesión.",
-  secure_store: "Desbloquea el almacén seguro del sistema y reintenta.",
-  network:
-    "No se pudo contactar con GitHub. Comprueba la conexión y reintenta.",
-  busy: "Hay otra operación de GitHub en curso. Espera y reintenta.",
-  rate_limited:
-    "GitHub limitó la consulta. Espera al menos un minuto antes de reintentar.",
-};
-
-function describe(problem: unknown) {
-  if (
-    typeof problem === "object" &&
-    problem !== null &&
-    "retryAt" in problem &&
-    typeof problem.retryAt === "number"
-  ) {
-    const date = new Date(problem.retryAt * 1000);
-    if (Number.isFinite(date.getTime())) {
-      return `GitHub limitó las consultas. Reintenta después de ${date.toLocaleString()}.`;
-    }
-    return "GitHub limitó las consultas. Espera antes de reintentar.";
-  }
-  return (
-    (typeof problem === "string" && problems[problem]) ||
-    "No se pudo consultar GitHub. Vuelve a intentarlo."
-  );
-}
 
 export function GithubResources({
   githubId,
@@ -90,6 +47,10 @@ export function GithubResources({
 }) {
   const [query, setQuery] = useState<Query>({ installation: null, page: 1 });
   const [result, setResult] = useState<Result>();
+  const [selected, setSelected] = useState<{
+    item: GithubRepositoryItem;
+    scope: RepositoryScope;
+  }>();
   const installationPage = useRef(1);
   const heading = useRef<HTMLHeadingElement>(null);
   const current = result?.query === query ? result : undefined;
@@ -103,7 +64,7 @@ export function GithubResources({
     let active = true;
     const args = { githubId, page: query.page };
     const request = query.installation
-      ? invoke<Page<Repository>>("github_repositories", {
+      ? invoke<Page<GithubRepositoryItem>>("github_repositories", {
           ...args,
           installationId: query.installation.id,
         }).then((repositories) => ({ query, repositories }))
@@ -132,6 +93,19 @@ export function GithubResources({
     }
   }
 
+  if (selected) {
+    return (
+      <GithubRepository
+        item={selected.item}
+        scope={selected.scope}
+        onBack={() => {
+          setSelected(undefined);
+          setQuery({ ...query });
+        }}
+      />
+    );
+  }
+
   return (
     <section
       className="github-resources"
@@ -157,7 +131,7 @@ export function GithubResources({
       )}
       {current && "problem" in current && (
         <p role="alert" className="inventory-conflict">
-          {describe(current.problem)}
+          {describeGithubProblem(current.problem)}
         </p>
       )}
       {page?.partialSso && (
@@ -212,49 +186,46 @@ export function GithubResources({
         <ul className="github-resource-list">
           {repositories.items.map((item) => (
             <li key={item.id} className="github-resource-row">
-              <strong>{item.fullName}</strong>
-              <span className="inventory-meta">
-                {visibility[item.visibility]}
-                {item.archived ? " · Archivado" : ""}
-              </span>
+              <div>
+                <strong>{item.fullName}</strong>
+                <p className="inventory-meta">
+                  {visibility[item.visibility]}
+                  {item.archived ? " · Archivado" : ""}
+                </p>
+              </div>
+              {query.installation && (
+                <button
+                  className="button"
+                  type="button"
+                  aria-label={`Ver actividad de ${item.fullName}`}
+                  onClick={() => {
+                    if (!query.installation) return;
+                    setSelected({
+                      item,
+                      scope: {
+                        githubId,
+                        installationId: query.installation.id,
+                        repositoryId: item.id,
+                        repositoryPage: query.page,
+                      },
+                    });
+                  }}
+                >
+                  Ver actividad
+                </button>
+              )}
             </li>
           ))}
         </ul>
       )}
       {current && (
-        <div className="action-row">
-          {(query.page > 1 || page?.hasNext) && (
-            <nav
-              className="github-pagination"
-              aria-label="Páginas de resultados"
-            >
-              <button
-                className="button"
-                type="button"
-                disabled={query.page === 1}
-                onClick={() => setQuery({ ...query, page: query.page - 1 })}
-              >
-                Anterior
-              </button>
-              <span className="inventory-meta">Página {query.page}</span>
-              <button
-                className="button"
-                type="button"
-                disabled={!page?.hasNext}
-                onClick={() => setQuery({ ...query, page: query.page + 1 })}
-              >
-                Siguiente
-              </button>
-            </nav>
-          )}
-          <button
-            className="button"
-            type="button"
-            onClick={() => setQuery({ ...query })}
-          >
-            {"problem" in current ? "Reintentar" : "Actualizar"}
-          </button>
-        </div>
+        <GithubPageActions
+          page={query.page}
+          hasNext={page?.hasNext ?? false}
+          failed={"problem" in current}
+          onPage={(next) => setQuery({ ...query, page: next })}
+          onRefresh={() => setQuery({ ...query })}
+        />
       )}
     </section>
   );

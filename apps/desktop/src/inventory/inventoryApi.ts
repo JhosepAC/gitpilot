@@ -98,6 +98,8 @@ type Contents = { exclusions: string[]; repositories: Repository[] };
 type ScanReport = { found: number; skipped: number; partial: boolean };
 
 export const inventoryApi = {
+  directories: () => invoke<Directory[]>("list_directories"),
+  contents: (id: number) => invoke<Contents>("list_directory_contents", { id }),
   inspect: (id: number) => invoke<InspectorData>("inspect_repository", { id }),
   preview: () => invoke<NativePreview>("preview_native_config"),
   nativeStatus: (operationId?: number) =>
@@ -141,13 +143,13 @@ export async function loadInventory(
   repositoryId?: number,
 ) {
   const [directories, profiles] = await Promise.all([
-    invoke<Directory[]>("list_directories"),
+    inventoryApi.directories(),
     identityApi.list(),
   ]);
   const directory =
     directories.find(({ id }) => id === directoryId) ?? directories[0];
   const contents = directory
-    ? await invoke<Contents>("list_directory_contents", { id: directory.id })
+    ? await inventoryApi.contents(directory.id)
     : { exclusions: [], repositories: [] };
   const repository = contents.repositories.find(
     ({ id }) => id === repositoryId,
