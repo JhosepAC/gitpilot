@@ -6,6 +6,8 @@ La sección **Identidades** permite crear, editar, duplicar y eliminar perfiles 
 
 En **Directorios**, añade la ruta absoluta de una carpeta de trabajo y pulsa **Escanear**. Puedes excluir subcarpetas, asignar un perfil al directorio y definir excepciones por repositorio. Abre un repositorio para comparar la identidad esperada con la configuración que Git devuelve. GitPilot guarda las reglas en SQLite y consulta Git en modo de solo lectura. La aplicación a Git corresponde a la fase 4. [Roadmap](docs/ROADMAP.md)
 
+Junto a **Escanear**, abre **Preferencias** para ajustar el tiempo, las entradas, la profundidad y los repositorios máximos de los siguientes escaneos. Durante el recorrido se muestran los conteos. **Cancelar escaneo** detiene el recorrido y conserva los resultados ya verificados junto con el inventario anterior.
+
 Pulsa **Vista previa de Git** para ver qué archivo global recibiría la inclusión, qué reglas se generarían para todo el inventario y qué valores prevalecerían en los repositorios que GitPilot puede verificar. La simulación usa archivos temporales y conserva la configuración existente.
 
 Cuando la vista previa se puede verificar, elige **Revisar aplicación** y confirma el destino. GitPilot guarda un respaldo cifrado de la configuración global existente, activa las reglas y verifica el resultado con Git. Abre de nuevo la vista previa para revisar la restauración. Para aplicar otro conjunto de reglas, restaura primero la aplicación anterior. En Linux, respaldar un archivo existente requiere `secret-tool` y un servicio Secret Service disponible en la sesión de escritorio.

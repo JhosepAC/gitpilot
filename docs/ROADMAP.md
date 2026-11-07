@@ -75,6 +75,6 @@ GitPilot administra cuentas con fotos de perfil, renovación y desconexión loca
 | Entrega | Alcance | Evidencia de salida |
 | --- | --- | --- |
 | 7.1 | Escaneo del inventario y diagnóstico de resultados parciales | Raíces con proyectos grandes conservan los repositorios hermanos y anidados ya alcanzados. El aviso identifica el límite. [Validaciones](testing/TESTING.md#evidencia-de-fase-7--escaneo-del-inventario) |
-| 7.2 | Preferencias y control de escaneo | Ajustes persistentes, progreso, cancelación y estados de error comprobados en Windows y Linux. |
+| 7.2 | Preferencias y control de escaneo | Ajustes persistentes, progreso, cancelación y estados de error comprobados en Windows y Linux. [Validaciones](testing/TESTING.md#evidencia-de-fase-7--preferencias-y-control-de-escaneo) |
 | 7.3 | Portabilidad, idioma y actividad | Exportación versionada, importación con revisión y errores verificables, idioma persistente y actividad accesible. |
 | 7.4 | Validación de la beta | Medición de escaneo y diagnóstico, revisión de accesibilidad, instaladores de prueba y cierre de hallazgos críticos. |

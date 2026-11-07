@@ -28,6 +28,8 @@ Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de c
 
 **Directorios.** La navegación lateral comparte la ventana fija con Identidades. Registrar una raíz requiere su ruta absoluta y el escaneo empieza al pulsar «Escanear». El panel anuncia cuántos repositorios verificó y distingue los límites alcanzados de las rutas con errores. También permite gestionar exclusiones y asignaciones. El detalle de cada repositorio distingue la identidad esperada de la configuración observada en Git y deja las rutas internas y los valores de autor y committer en secciones desplegables.
 
+**Control de escaneo.** «Preferencias» abre los cuatro límites globales junto a la acción de escanear. Los valores predeterminados se cargan en el formulario y se aplican al guardar. Durante el recorrido, el panel muestra conteos y ofrece cancelar. Cuando GitPilot guarda el resultado, cambia el estado a «Guardando resultados». Al terminar, el foco vuelve a «Escanear».
+
 **Vista previa de Git.** Se abre en el panel de Directorios, con el destino y el manifiesto primero. Los repositorios con discrepancias aparecen antes que el resto. Se puede desplegar la comparación por campo y el patrón de cada regla. Volver al inventario conserva la selección y devuelve el foco al botón de entrada.
 
 **Aplicación y restauración.** Una vista previa verificable ofrece «Revisar aplicación». La confirmación en el mismo panel repite el archivo global. Una vez verificada, la aplicación muestra el destino y permite confirmar la restauración. «Recuperación pendiente» identifica el archivo cuyo estado requiere revisión.

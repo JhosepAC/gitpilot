@@ -25,6 +25,8 @@ La revisión del perfil se comprueba al editarlo, duplicarlo, cambiar su estado 
 
 Un escaneo completo actualiza la presencia de los repositorios de su raíz. Conserva las excepciones de los repositorios ausentes para poder retirarlas desde GitPilot. Un escaneo parcial agrega o actualiza los resultados verificados y conserva las pertenencias anteriores. Guardar un escaneo requiere que la revisión de la raíz coincida con la capturada al inicio.
 
+`app_settings` guarda las preferencias de escaneo en la clave `inventory.scan`. Una base anterior usa 12 segundos de recorrido, 12 000 entradas, profundidad 24 y 200 repositorios. La actualización valida los intervalos y compara los valores que se revisaron al abrir el formulario para detectar cambios concurrentes.
+
 El plan liga revisiones y huellas de todos los archivos relevantes, incluidas las dependencias externas que afectan la verificación. Confirmar una operación actualiza el estado aplicado en SQLite solo después de verificar con Git. Conservar el snapshot necesario para interpretar un estado aplicado incluso si el perfil ya tiene un borrador distinto. Recuperar o revertir antes de admitir otra escritura tras una interrupción.
 
 ## Cuentas de GitHub
