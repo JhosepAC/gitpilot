@@ -78,3 +78,10 @@ GitPilot administra cuentas con fotos de perfil, renovación y desconexión loca
 | 7.2 | Preferencias y control de escaneo | Ajustes persistentes, progreso, cancelación y estados de error comprobados en Windows y Linux. [Validaciones](testing/TESTING.md#evidencia-de-fase-7--preferencias-y-control-de-escaneo) |
 | 7.3 | Portabilidad, idioma y actividad | JSON versionado con revisión de importación, español e inglés persistentes en la navegación y las pantallas principales de esta entrega, y filtro de transferencias en Actividad. Falta ampliar el inglés al detalle de Identidades, Directorios y GitHub. [Validaciones](testing/TESTING.md#evidencia-de-fase-7--portabilidad-idioma-y-actividad) |
 | 7.4 | Validación de la beta | Presupuestos medidos en Windows y Debian, foco y contraste corregidos, instaladores de prueba con el nuevo logo y verificación de instalación, reapertura y retirada. [Validaciones](testing/TESTING.md#evidencia-de-fase-7--validación-de-la-beta) |
+
+## Entregas de la fase 8
+
+| Entrega | Alcance | Evidencia de salida |
+| --- | --- | --- |
+| 8.1 | Candidato v1.0.0 | Logo compartido en la interfaz, licencia y atribución en los paquetes, canal privado de seguridad, documentación ES/EN y compilación desde un commit verificado de `main`. [Distribución](RELEASING.md) |
+| 8.2 | Firma y publicación | Authenticode en Windows, manifiesto firmado, tag verificado, comprobación desde los artefactos de GitHub Releases y publicación. [Firma y publicación](RELEASING.md#firmar-y-publicar) |

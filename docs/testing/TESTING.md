@@ -33,7 +33,7 @@ La [prueba de viabilidad de fase 0](PHASE_0.md) sirve de referencia para ampliar
 | --- | --- |
 | `ci.yml` | En PR a `main` y push al tronco. Revisar rutas ignoradas que se hayan rastreado, ejecutar Prettier, ESLint, typecheck, Vitest, formato Rust, Clippy, `cargo test` y build Tauri. Matriz Windows x86_64 y Linux x86_64. Incorporar flujos UI a medida que se implementen. |
 | `security.yml` | Dependabot, auditoría de dependencias Rust/JS y análisis estático según soporte. Evaluar CodeQL y `cargo deny`. Bloquear hallazgos críticos según política. |
-| `release.yml` | Tags versionados de `main` con CI verificada. Construir, firmar donde proceda, generar checksums, comprobar instalación y publicar mediante permisos acotados y secretos del entorno de release. |
+| `release.yml` | Ejecución manual desde `main` con CI verificada para el mismo commit. Genera NSIS, Debian, metadatos y SHA-256 con permisos de lectura. La firma, validación de los archivos finales y publicación se realizan según la [guía de distribución](../RELEASING.md). |
 
 La definición de terminado exige criterios de aceptación satisfechos, validaciones ejecutadas y registradas, cobertura de todos los casos críticos aplicables y documentación actualizada. Toda escritura Git requiere pruebas de integración. Los casos de cada plataforma se registran con versión de Git, sistema, resultados y límites. La publicación exige resultados favorables en ambas plataformas objetivo.
 
@@ -197,3 +197,10 @@ Los tiempos proceden del perfil de pruebas local. La memoria se observó mediant
 - En WebKitGTK se importó y guardó una identidad con el teclado, se registró un directorio, se escaneó un repositorio y se abrió su diagnóstico. Tras reinstalar, la identidad y el repositorio seguían disponibles. Se comprobó que el foco de teclado llegaba al título de Directorios y que el área de contenido seguía en 900 × 600. Las pruebas cubrieron teclado y foco visible. Queda pendiente una revisión con lectores de pantalla.
 - Se instalaron, reinstalaron y desinstalaron el NSIS x64 con un identificador de QA y el paquete Debian amd64 en un contenedor. Se verificó el PNG instalado en Debian y se compararon los archivos de configuración Git de prueba antes y después. Se generaron candidatos locales de v0.1.0 con sumas SHA-256. La firma de distribución y la publicación corresponden a la fase 8.
 - En Windows y Debian pasaron Prettier, ESLint, TypeScript, cuatro pruebas Vitest, formato Rust, Clippy y compilación Tauri. La suite Rust pasó 39 pruebas en Windows y 40 en Debian. El fixture de rendimiento se ejecutó aparte en ambas plataformas.
+
+## Evidencia de fase 8 · Candidato v1.0.0
+
+- En Windows y Debian pasaron Prettier, ESLint, TypeScript, cuatro pruebas Vitest, formato Rust, Clippy y empaquetado Tauri. Pasaron 39 pruebas Rust en Windows y 40 en Debian.
+- En WebView2 se verificó el PNG de GitPilot en las seis secciones, la ventana fija de 900 × 600 y el reflujo a 390 px. En WebKitGTK se verificó el logo al reabrir Identidades en la ventana fija.
+- Se actualizó el NSIS de 0.1.0 a 1.0.0 con un identificador aislado de QA. Se verificaron los perfiles, los repositorios y los archivos de licencia y atribución instalados. En Debian se actualizó el paquete de 0.1.0 a 1.0.0, se comprobó SQLite y se compararon los archivos Git global y local del fixture byte a byte.
+- `actionlint` validó el workflow del candidato. Se comprobó la consulta de CI para un SHA exacto de `main` y el rechazo de versiones desalineadas en los manifiestos. Los candidatos locales tienen SHA-256. La ejecución de GitHub Actions corresponde al commit del candidato una vez integrado en `main`. [Proceso de distribución](../RELEASING.md)

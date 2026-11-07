@@ -1,10 +1,12 @@
 # GitPilot
 
+[English](README.en.md)
+
 GitPilot es una aplicación de escritorio local-first para gestionar identidades Git. El lanzamiento apunta a Windows y Linux x86_64. macOS queda como ampliación futura.
 
 La sección **Identidades** permite crear, editar, duplicar y eliminar perfiles locales, y elegir un predeterminado. **Importar desde Git** lee el nombre y el correo globales y abre un borrador para revisión antes de guardar.
 
-En **Directorios**, añade la ruta absoluta de una carpeta de trabajo y pulsa **Escanear**. Puedes excluir subcarpetas, asignar un perfil al directorio y definir excepciones por repositorio. Abre un repositorio para comparar la identidad esperada con la configuración que Git devuelve. GitPilot guarda las reglas en SQLite y consulta Git en modo de solo lectura. La aplicación a Git corresponde a la fase 4. [Roadmap](docs/ROADMAP.md)
+En **Directorios**, añade la ruta absoluta de una carpeta de trabajo y pulsa **Escanear**. Puedes excluir subcarpetas, asignar un perfil al directorio y definir excepciones por repositorio. Abre un repositorio para comparar la identidad esperada con la configuración que Git devuelve. GitPilot guarda las reglas en SQLite y usa Git CLI para comprobar la configuración efectiva. [Roadmap](docs/ROADMAP.md)
 
 Junto a **Escanear**, abre **Preferencias** para ajustar el tiempo, las entradas, la profundidad y los repositorios máximos de los siguientes escaneos. Durante el recorrido se muestran los conteos. **Cancelar escaneo** detiene el recorrido y conserva los resultados ya verificados junto con el inventario anterior.
 
@@ -66,6 +68,12 @@ cargo test --locked --features custom-protocol
 
 La compilación anterior genera un binario de desarrollo. Las reglas de contribución usan [trunk-based development](docs/ROADMAP.md#trunk-based-development). Los contextos locales de asistentes se excluyen del historial y CI comprueba que esas rutas no estén rastreadas.
 
-## Generar los instaladores de v0.1.0
+## Instaladores de v1.0.0
 
-Desde `apps/desktop`, ejecuta `npm run tauri -- build --ci -- --locked` en cada plataforma. Windows genera `GitPilot_0.1.0_x64-setup.exe`, un instalador NSIS por usuario. Linux genera `GitPilot_0.1.0_amd64.deb` con Debian 12 como base de compilación. El paquete declara Git y `libsecret-tools` como dependencias. En Debian, instálalo con `sudo apt install ./GitPilot_0.1.0_amd64.deb` desde la carpeta que contiene el archivo. Los candidatos locales incluyen un archivo de sumas SHA-256. La firma de distribución y la publicación quedan pendientes. [Empaquetado Debian de Tauri](https://v2.tauri.app/distribute/debian/) · [Instaladores de Windows](https://v2.tauri.app/distribute/windows/)
+Desde `apps/desktop`, ejecuta `npm run tauri -- build --ci -- --locked` en cada plataforma. Windows genera un instalador NSIS por usuario. Debian 12 genera un paquete amd64 que declara Git y `libsecret-tools` como dependencias. En Debian, instálalo con `sudo apt install ./GitPilot_1.0.0_amd64.deb` desde la carpeta que contiene el archivo. [Compatibilidad, verificación y actualización](docs/RELEASING.md)
+
+## Licencia y contribuciones
+
+GitPilot es obra de Jhosep Jamil Argomedo Camacho. Su código está disponible bajo CC BY-NC 4.0 para fines no comerciales. Conserva la atribución, la licencia y la indicación de cambios al distribuir copias o modificaciones. Para uso interno comercial, venta o monetización, solicita permiso al autor. [Licencia](LICENSE) · [Atribución](NOTICE) · [@JhosepAC](https://github.com/JhosepAC)
+
+[Guía de contribución](CONTRIBUTING.md) · [Reporte privado de vulnerabilidades](SECURITY.md) · [Historial de cambios](CHANGELOG.md)
