@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Overview } from "../app/Overview";
 import type { Workspace } from "../app/WorkspaceNav";
+import { GithubResources } from "./GithubResources";
 import "./github.css";
 
 type Identity = { githubId: number; login: string };
@@ -94,6 +95,7 @@ export function GithubPage({
 }) {
   const [data, setData] = useState<Accounts>();
   const [selected, setSelected] = useState<number>();
+  const [explore, setExplore] = useState(false);
   const [flow, setFlow] = useState<Flow | null>(null);
   const [busy, setBusy] = useState(false);
   const [disconnecting, setDisconnecting] = useState<number>();
@@ -103,8 +105,11 @@ export function GithubPage({
   const cancelDisconnectButton = useRef<HTMLButtonElement>(null);
   const disconnectButton = useRef<HTMLButtonElement>(null);
   const checkButton = useRef<HTMLButtonElement>(null);
+  const resourcesButton = useRef<HTMLButtonElement>(null);
   const code = useRef<HTMLElement>(null);
-  const restoreFocus = useRef<"account" | "disconnect">(undefined);
+  const restoreFocus = useRef<"account" | "disconnect" | "resources">(
+    undefined,
+  );
   const activeSession = useRef<string | null>(null);
   const inProgress = useRef(false);
   const autoAttempt = useRef<string>(undefined);
@@ -114,6 +119,8 @@ export function GithubPage({
   const id = account?.githubId;
   const state = account?.state;
   const expiresAt = account?.expiresAt;
+  const canExplore =
+    state === "connected" || state === "expired" || state === "refreshing";
 
   useEffect(() => {
     let active = true;
@@ -175,14 +182,17 @@ export function GithubPage({
     if (disconnecting) cancelDisconnectButton.current?.focus();
   }, [disconnecting]);
   useEffect(() => {
-    if (busy || flow || disconnecting || !restoreFocus.current) return;
-    const target =
-      restoreFocus.current === "disconnect"
-        ? disconnectButton.current
-        : (checkButton.current ?? addButton.current);
+    if (busy || flow || disconnecting || explore || !restoreFocus.current)
+      return;
+    const target = {
+      disconnect: disconnectButton.current,
+      resources:
+        resourcesButton.current ?? checkButton.current ?? addButton.current,
+      account: checkButton.current ?? addButton.current,
+    }[restoreFocus.current];
     target?.focus();
     restoreFocus.current = undefined;
-  }, [busy, flow, disconnecting]);
+  }, [busy, flow, disconnecting, explore]);
 
   const run = useCallback(async (operation: () => Promise<void>) => {
     if (inProgress.current) return;
@@ -247,6 +257,7 @@ export function GithubPage({
         githubId: githubId ?? null,
       });
       activeSession.current = next.sessionId;
+      setExplore(false);
       setFlow(next);
     });
   }
@@ -375,6 +386,17 @@ export function GithubPage({
                 </>
               )}
             </section>
+          ) : account && explore ? (
+            <GithubResources
+              key={account.githubId}
+              githubId={account.githubId}
+              login={account.login}
+              onBack={() => {
+                restoreFocus.current = "resources";
+                setExplore(false);
+                void readAccounts().then(setData, () => {});
+              }}
+            />
           ) : account ? (
             <section aria-labelledby="github-account-title">
               <div className="github-account-heading">
@@ -422,9 +444,23 @@ export function GithubPage({
                 </>
               ) : (
                 <div className="action-row">
-                  {state !== "reauthorize" && state !== "disconnecting" && (
+                  {canExplore && (
                     <button
                       className="button primary"
+                      ref={resourcesButton}
+                      disabled={busy}
+                      onClick={() => {
+                        setError("");
+                        setNotice("");
+                        setExplore(true);
+                      }}
+                    >
+                      Ver instalaciones
+                    </button>
+                  )}
+                  {state !== "reauthorize" && state !== "disconnecting" && (
+                    <button
+                      className={canExplore ? "button" : "button primary"}
                       ref={checkButton}
                       disabled={busy}
                       onClick={() => void check(account.githubId)}
