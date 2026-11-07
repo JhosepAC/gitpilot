@@ -84,4 +84,4 @@ GitPilot administra cuentas con fotos de perfil, renovación y desconexión loca
 | Entrega | Alcance | Evidencia de salida |
 | --- | --- | --- |
 | 8.1 | Candidato v1.0.0 | Logo compartido en la interfaz, licencia y atribución en los paquetes, canal privado de seguridad, documentación ES/EN y compilación desde un commit verificado de `main`. [Distribución](RELEASING.md) |
-| 8.2 | Firma y publicación | Authenticode en Windows, manifiesto firmado, tag verificado, comprobación desde los artefactos de GitHub Releases y publicación. [Firma y publicación](RELEASING.md#firmar-y-publicar) |
+| 8.2 | Firma y publicación | NSIS sin Authenticode, manifiesto SHA-256 firmado con OpenPGP, comprobación de los archivos del borrador y publicación con tag firmado tras la aprobación. [Firma y publicación](RELEASING.md#firmar-y-publicar) |

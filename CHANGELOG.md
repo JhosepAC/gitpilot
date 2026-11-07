@@ -1,6 +1,6 @@
 # Historial de cambios
 
-## 1.0.0 · Candidato
+## 1.0.0
 
 - Perfiles de autor, reglas de directorio y excepciones por repositorio, con diagnóstico de los valores efectivos de Git.
 - Vista previa y aplicación confirmada de cambios Git, respaldos cifrados, actividad y restauración.

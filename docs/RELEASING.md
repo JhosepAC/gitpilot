@@ -30,15 +30,26 @@ sha256sum --check SHA256SUMS.txt
 
 ## Firmar y publicar
 
-1. Para Windows, configura el servicio o certificado de firma del mantenedor y recompila el NSIS desde el commit verificado. Usa la configuración de firma de Tauri para firmar el ejecutable y el instalador durante el empaquetado. Comprueba ambos con `signtool verify /pa /all` y verifica la marca de tiempo. [Firma de Windows en Tauri](https://v2.tauri.app/distribute/sign/windows/)
-2. Genera `SHA256SUMS.txt` a partir de los archivos finales y crea una firma OpenPGP separada del manifiesto. Distribuye la clave pública y su huella por un canal del proyecto que se pueda verificar. Conserva `LICENSE` y `NOTICE` con los instaladores.
-3. Crea el tag firmado `v1.0.0` sobre el mismo commit y prepara un borrador en GitHub Releases con los archivos finales y las notas de [CHANGELOG.md](../CHANGELOG.md). Usa `gh release create v1.0.0 --verify-tag --draft` con los artefactos y notas revisados. [GitHub CLI](https://cli.github.com/manual/gh_release_create)
-4. Descarga los archivos del borrador y vuelve a verificar firma, sumas, instalación y actualización. Publica el borrador cuando el responsable apruebe los resultados.
+El NSIS de v1.0.0 se distribuye sin Authenticode. La firma OpenPGP del manifiesto permite verificar la procedencia y la integridad de ambos paquetes antes de instalar. Windows puede mostrar el instalador con editor desconocido. [Firma de Windows en Tauri](https://v2.tauri.app/distribute/sign/windows/)
+
+1. Usa la clave OpenPGP de distribución del mantenedor. Si vas a crearla con GnuPG, elige una frase de paso en el diálogo local y guarda el material de recuperación en privado. Comparte solo la clave pública y la huella completa. [Gestión de claves en GnuPG](https://gnupg.org/documentation/manuals/gnupg/OpenPGP-Key-Management.html)
+2. Desde la carpeta de los artefactos definitivos, verifica las sumas y firma `SHA256SUMS.txt` con la huella de distribución. Exporta la clave pública como `GitPilot-release-key.asc`. Conserva `LICENSE` y `NOTICE` con los instaladores.
+3. Prepara un borrador de GitHub Releases dirigido al SHA verificado con `gh release create v1.0.0 --target "$SHA" --draft`. Adjunta los archivos y las notas de [CHANGELOG.md](../CHANGELOG.md). Si la firma se completa después, añádela al mismo borrador. [GitHub CLI](https://cli.github.com/manual/gh_release_create)
+4. Descarga los archivos del borrador y verifica firma, sumas, instalación y actualización. Tras la aprobación del responsable, crea y sube el tag firmado `v1.0.0` sobre el mismo commit, comprueba su destino y publica el borrador.
+
+Con `FINGERPRINT` configurada con la huella completa de la clave de distribución, ejecuta:
 
 ```sh
-gpg --armor --detach-sign SHA256SUMS.txt
+sha256sum --check SHA256SUMS.txt
+gpg --local-user "$FINGERPRINT" --armor --detach-sign SHA256SUMS.txt
+gpg --armor --output GitPilot-release-key.asc --export "$FINGERPRINT"
+```
+
+Para verificar una publicación, coteja primero la huella de la clave con la anunciada por el mantenedor a través de un canal de confianza. Luego comprueba la firma y las sumas.
+
+```sh
+gpg --show-keys --fingerprint GitPilot-release-key.asc
+gpg --import GitPilot-release-key.asc
 gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
 sha256sum --check SHA256SUMS.txt
 ```
-
-Para verificar una publicación, coteja primero la huella OpenPGP con la anunciada por el proyecto. El NSIS también muestra el editor firmado en las propiedades del archivo.
