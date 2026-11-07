@@ -3,7 +3,7 @@ use sqlx::SqlitePool;
 
 use crate::repository::InventoryError;
 
-const KEY: &str = "inventory.scan";
+pub(super) const KEY: &str = "inventory.scan";
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -36,7 +36,7 @@ impl ScanPreferences {
         max_repositories: 1000,
     };
 
-    fn validate(self) -> Result<Self, InventoryError> {
+    pub(super) fn validate(self) -> Result<Self, InventoryError> {
         if (Self::MIN.time_seconds..=Self::MAX.time_seconds).contains(&self.time_seconds)
             && (Self::MIN.max_entries..=Self::MAX.max_entries).contains(&self.max_entries)
             && (Self::MIN.max_depth..=Self::MAX.max_depth).contains(&self.max_depth)
@@ -69,7 +69,7 @@ impl From<ScanPreferences> for ScanSettings {
     }
 }
 
-fn decode(value: Option<&str>) -> Result<ScanPreferences, InventoryError> {
+pub(super) fn decode(value: Option<&str>) -> Result<ScanPreferences, InventoryError> {
     match value {
         Some(value) => serde_json::from_str::<ScanPreferences>(value)
             .ok()

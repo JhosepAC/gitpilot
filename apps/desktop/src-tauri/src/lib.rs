@@ -4,6 +4,7 @@ mod error;
 mod github_commands;
 mod identity;
 mod infrastructure;
+mod portability_commands;
 mod repository;
 mod repository_commands;
 
@@ -18,6 +19,7 @@ pub fn run() -> tauri::Result<()> {
     let _ = tracing_subscriber::registry().with(logging).try_init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let directory = app.path().app_local_data_dir().ok();
             let foundation =
@@ -85,6 +87,11 @@ pub fn run() -> tauri::Result<()> {
             repository_commands::setup_status,
             repository_commands::keep_repository_identity,
             repository_commands::preview_local_identity,
+            portability_commands::read_language,
+            portability_commands::save_language,
+            portability_commands::preview_portable_settings,
+            portability_commands::import_portable_settings,
+            portability_commands::export_portable_settings,
         ])
         .run(tauri::generate_context!())
 }

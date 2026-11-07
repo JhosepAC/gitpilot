@@ -1,0 +1,10 @@
+[[permission]]
+identifier = "allow-portable-settings"
+description = "Review and transfer local settings with a user-selected file"
+commands.allow = [
+    "read_language",
+    "save_language",
+    "preview_portable_settings",
+    "import_portable_settings",
+    "export_portable_settings",
+]

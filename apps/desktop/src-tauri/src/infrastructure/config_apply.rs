@@ -92,15 +92,18 @@ pub(crate) struct ActivityItem {
     state: String,
     scope: String,
     at: String,
+    profile_count: Option<i64>,
 }
 
 pub(crate) async fn activity(pool: &SqlitePool) -> Result<Vec<ActivityItem>, ApplyError> {
     Ok(sqlx::query_as(
         "SELECT rowid AS id, target, state, CASE WHEN is_hook = 1 THEN 'hook' WHEN repository_id IS NULL THEN 'global' ELSE 'local' END AS scope,
-            COALESCE(updated_at, created_at) AS at FROM config_operations
+            COALESCE(updated_at, created_at) AS at, NULL AS profile_count FROM config_operations
          UNION ALL
-         SELECT -id, path, 'kept', 'local', created_at FROM conflict_decisions
-         ORDER BY at DESC, id DESC LIMIT 100",
+         SELECT -id, path, 'kept', 'local', created_at, NULL FROM conflict_decisions
+         UNION ALL
+         SELECT id, '', action, 'data', created_at, profile_count FROM portable_activity
+         ORDER BY at DESC, id DESC, scope LIMIT 100",
     ).fetch_all(pool).await?)
 }
 
