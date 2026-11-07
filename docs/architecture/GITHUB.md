@@ -1,6 +1,6 @@
 # GitHub · fase 6
 
-La primera entrega de esta fase define el tipo de aplicación, el registro de desarrollo y los contratos de implementación. La conexión de cuentas se construirá en las entregas siguientes sobre el [ADR-004](../decisions/ADR-004-autenticacion.md).
+La entrega 6.1 implementa la autorización y persistencia de la primera cuenta sobre el [ADR-004](../decisions/ADR-004-autenticacion.md). Los apartados siguientes distinguen el contrato de la fase completa y el comportamiento disponible en esta entrega.
 
 ## Alcance
 
@@ -35,6 +35,8 @@ El responsable realiza este registro en su cuenta o en una organización que adm
 7. Instala la aplicación en la cuenta de prueba con **Only select repositories**. Selecciona un repositorio privado temporal con un issue y una PR de prueba.
 
 El responsable conservará las credenciales administrativas del registro. GitPilot usará el Client ID público y los tokens individuales obtenidos mediante autorización. Los registros de desarrollo y distribución tendrán identificadores separados.
+
+El registro de desarrollo actual pertenece a `JhosepAC`, con App ID `5652387` y Client ID público `Iv23libwtluOIgGw4BuU`. El backend usa este Client ID para iniciar Device Flow. El repositorio privado `JhosepAC/test-gitpilot` se reserva para comprobar recursos autorizados en 6.3.
 
 ## Autorización de escritorio
 
@@ -92,12 +94,20 @@ Para asociar un remoto, el backend volverá a consultar Git y verificará que el
 | Entrega | Implementación | Criterio verificable |
 | --- | --- | --- |
 | 6.0 | Decisión, permisos, registro y contratos | ADR adoptado, fuentes revisadas y guía disponible. Completada en esta entrega. |
-| 6.1 | Device Flow, cancelación, almacenes seguros y primera cuenta | Conectar una cuenta, verificar `/user`, reabrir y recuperar la sesión persistida en Windows y Linux. |
+| 6.1 | Device Flow, cancelación, almacenes seguros y primera cuenta | Implementada. Autorización real en Windows y flujo simulado con Secret Service en Linux. [Evidencia](../testing/TESTING.md#evidencia-de-fase-6--primera-cuenta). |
 | 6.2 | Varias cuentas, renovación y desconexión | Aislamiento por ID, rotación serializada, recuperación y retirada local comprobadas. Revocación remota recorrida por el usuario. |
 | 6.3 | Instalaciones, organizaciones y repositorios | Acceso privado y selección de repositorios comprobados, con estados de permisos y SSO. |
 | 6.4 | PR, issues y asociación con el inventario | Paginación, rate limits, aislamiento de caché y cambio externo de remoto comprobados. |
 
 Cada entrega usará una rama breve desde `main` y commits convencionales por responsabilidad. La fase termina cuando las comprobaciones de escritorio, almacenes, permisos y recuperación de estas entregas pasan en ambas plataformas.
+
+## Comportamiento de la entrega 6.1
+
+La pantalla GitHub inicia la autorización mediante una acción del usuario, muestra el código y permite abrir la URL de verificación o cancelar. El backend conserva la sesión temporal y aplica los intervalos con un reloj monotónico. La cancelación interrumpe la petición activa y descarta sus respuestas tardías. Tras el canje se verifica `/user` y se guarda la credencial completa en el almacén del sistema.
+
+La sesión persistida conserva ambos tokens y sus vencimientos para la futura renovación. La interfaz permite comprobar el acceso y volver a autorizar la misma cuenta. Al vencer el access token, esta entrega requiere otra autorización. La conexión de cuentas adicionales, la renovación automática y la desconexión se incorporarán en 6.2.
+
+El journal guarda referencias `pending`, `active` y `retiring`. Las escrituras de credenciales se verifican antes de actualizar la cuenta en SQLite. Las entradas huérfanas se retiran al cargar o guardar la cuenta bajo un lock del sistema. En Linux la retirada comprueba también la ausencia de la entrada, incluida la recuperación de un journal creado antes de escribir el secreto. Una retirada pendiente permanece visible.
 
 ## Validación requerida
 

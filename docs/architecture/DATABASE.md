@@ -27,6 +27,12 @@ Un escaneo completo actualiza la presencia de los repositorios de su raíz. Cons
 
 El plan liga revisiones y huellas de todos los archivos relevantes, incluidas las dependencias externas que afectan la verificación. Confirmar una operación actualiza el estado aplicado en SQLite solo después de verificar con Git. Conservar el snapshot necesario para interpretar un estado aplicado incluso si el perfil ya tiene un borrador distinto. Recuperar o revertir antes de admitir otra escritura tras una interrupción.
 
+## Primera cuenta de GitHub
+
+La migración `202611070001_github_account.sql` añade `github_accounts` y `github_credentials`. La primera tabla tiene un slot único y guarda Client ID, ID remoto, login, vencimiento, última verificación y referencia al almacén seguro. La segunda registra las referencias en preparación, activas o pendientes de retirada. Los tokens y su renovación se guardan en la entrada del almacén del SO.
+
+La referencia se registra antes de escribir la credencial. Tras comprobar esa escritura, una transacción sustituye los metadatos de la cuenta y marca la referencia anterior para retirada. La reconciliación elimina referencias huérfanas bajo un lock compartido entre instancias. Las siguientes migraciones ampliarán el modelo a varias cuentas. [Contrato de GitHub](GITHUB.md)
+
 ## Extensiones posteriores
 
 | Tabla o relación | Uso |

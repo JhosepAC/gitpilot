@@ -38,6 +38,8 @@ Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de c
 
 **Comprobaciones y pre-commit.** El Inspector distingue lectura HTTPS anónima y con credenciales, SSH directo y configurado, y las comprobaciones de firma. Antes de ejecutar muestra la modalidad, el destino y, cuando corresponde, el salto SSH o la referencia OpenPGP. El foco vuelve al control de origen tras cancelar o terminar. La instalación del hook muestra el archivo, la identidad revisada y si emitirá un aviso o bloqueará el commit. La retirada tiene su propia confirmación y queda registrada en Actividad.
 
+**GitHub.** La primera cuenta se conecta desde la navegación principal. Durante la autorización se muestran el código seleccionable, el destino del navegador y la acción de cancelar. La cuenta verificada presenta login, ID remoto y fechas de comprobación y vencimiento. La acción principal de una sesión guardada comprueba la conexión. Volver a autorizar abre un nuevo flujo para esa cuenta. Los estados de espera y error se anuncian y el foco vuelve al control de origen al terminar.
+
 **Ventana.** El área de trabajo es fija de 900 × 600 píxeles lógicos, con minimizar y cerrar mediante los controles nativos. La lista y el detalle se desplazan de forma independiente. El diseño reorganiza los paneles cuando el zoom reduce el espacio de contenido.
 
 ## Criterios visuales y de accesibilidad

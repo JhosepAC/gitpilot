@@ -16,7 +16,7 @@ En un repositorio del inventario, **Abrir Inspector** muestra la rama, el estado
 
 Desde el Inspector puedes revisar y confirmar una lectura remota por SSH directo o configurado, o por HTTPS anónimo o con credenciales existentes. También puedes comprobar una firma SSH u OpenPGP e instalar el hook `pre-commit` para la identidad revisada. El hook ofrece aviso o bloqueo y puede retirarse desde el Inspector o Actividad. [Modalidades y compatibilidad](docs/security/AUTHENTICATION.md#comprobaciones-explícitas)
 
-La fase 6 comienza con la decisión de GitHub App y Device Flow. La [guía de registro de desarrollo](docs/architecture/GITHUB.md#registro-para-desarrollo) prepara el Client ID público y los permisos para implementar la conexión de cuentas.
+En **GitHub**, pulsa **Conectar con GitHub**, introduce el código en el navegador y confirma la autorización. GitPilot verifica el ID de la cuenta y guarda la sesión en Windows Credential Manager o Linux Secret Service. **Comprobar conexión** verifica la credencial guardada con GitHub. Esta entrega administra la primera cuenta y permite volver a autorizarla al vencer. En Linux se necesitan `secret-tool` y un Secret Service disponible. [Conexión y siguientes entregas](docs/architecture/GITHUB.md)
 
 ## Ejecutar en desarrollo
 

@@ -68,4 +68,4 @@ El Inspector muestra la rama, el estado del índice y las modificaciones rastrea
 
 ## Estado de la fase 6
 
-Iniciada con la entrega 6.0. Se adopta GitHub App, Device Flow y permisos de repositorio de lectura. La especificación define el registro de desarrollo, la autorización y renovación, los almacenes seguros, la desconexión y las siguientes entregas. El próximo paso de implementación es 6.1, con el Client ID público del registro de desarrollo. [Especificación de GitHub](architecture/GITHUB.md)
+La entrega 6.1 incorpora Device Flow, cancelación, verificación de la primera cuenta y persistencia en el almacén del SO. Windows completó una autorización real y la comprobación tras reabrir. Linux comprobó el flujo con un servidor simulado y Secret Service aislado. La entrega 6.2 incorporará varias cuentas, renovación y desconexión. [Especificación de GitHub](architecture/GITHUB.md)
