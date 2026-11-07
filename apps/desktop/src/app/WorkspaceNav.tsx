@@ -1,13 +1,7 @@
-export type Workspace =
-  "setup" | "identities" | "directories" | "github" | "activity";
+import { useLanguage } from "./language";
 
-const sections: Record<Workspace, string> = {
-  setup: "Inicio",
-  identities: "Identidades",
-  directories: "Directorios",
-  github: "GitHub",
-  activity: "Actividad",
-};
+export type Workspace =
+  "setup" | "identities" | "directories" | "github" | "activity" | "settings";
 
 export function WorkspaceNav({
   current,
@@ -18,8 +12,20 @@ export function WorkspaceNav({
   onNavigate: (workspace: Workspace) => void;
   disabled?: boolean;
 }) {
+  const { t } = useLanguage();
+  const sections: Record<Workspace, string> = {
+    setup: t("Inicio", "Home"),
+    identities: t("Identidades", "Identities"),
+    directories: t("Directorios", "Directories"),
+    github: "GitHub",
+    activity: t("Actividad", "Activity"),
+    settings: t("Configuración", "Settings"),
+  };
   return (
-    <nav className="workspace-nav" aria-label="Secciones de GitPilot">
+    <nav
+      className="workspace-nav"
+      aria-label={t("Secciones de GitPilot", "GitPilot sections")}
+    >
       {(Object.keys(sections) as Workspace[]).map((section) => (
         <button
           key={section}

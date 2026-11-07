@@ -7,6 +7,10 @@ import { InventoryPage } from "../inventory/InventoryPage";
 import { ActivityPage, loadSetup, SetupPage } from "./Overview";
 import type { Workspace } from "./WorkspaceNav";
 import { GithubPage } from "../github/GithubPage";
+import { SettingsPage } from "./SettingsPage";
+import { LanguageContext } from "./language";
+import type { Language } from "./language";
+import { portableApi } from "./portableApi";
 
 const messages = {
   loading: "Comprobando el almacenamiento local…",
@@ -17,14 +21,21 @@ const messages = {
 export function App() {
   const [state, setState] = useState<FoundationState>({ kind: "loading" });
   const [workspace, setWorkspace] = useState<Workspace>("identities");
+  const [language, setLanguage] = useState<Language>("es");
 
   useEffect(() => {
     let active = true;
     void readFoundationStatus().then(async (nextState) => {
       if (nextState.kind === "ready") {
-        const setup = await loadSetup().catch(() => undefined);
-        if (active && setup && !setup.identities && !setup.directories)
-          setWorkspace("setup");
+        const [setup, savedLanguage] = await Promise.all([
+          loadSetup().catch(() => undefined),
+          portableApi.readLanguage().catch(() => "es" as const),
+        ]);
+        if (active) {
+          setLanguage(savedLanguage);
+          if (setup && !setup.identities && !setup.directories)
+            setWorkspace("setup");
+        }
       }
       if (active) setState(nextState);
     });
@@ -33,15 +44,29 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
+
   if (state.kind === "ready") {
-    if (workspace === "setup") return <SetupPage onNavigate={setWorkspace} />;
-    if (workspace === "activity")
-      return <ActivityPage onNavigate={setWorkspace} />;
-    if (workspace === "github") return <GithubPage onNavigate={setWorkspace} />;
-    return workspace === "identities" ? (
-      <IdentitiesPage onNavigate={setWorkspace} />
-    ) : (
-      <InventoryPage onNavigate={setWorkspace} />
+    return (
+      <LanguageContext.Provider value={language}>
+        {workspace === "setup" && <SetupPage onNavigate={setWorkspace} />}
+        {workspace === "activity" && <ActivityPage onNavigate={setWorkspace} />}
+        {workspace === "github" && <GithubPage onNavigate={setWorkspace} />}
+        {workspace === "identities" && (
+          <IdentitiesPage onNavigate={setWorkspace} />
+        )}
+        {workspace === "directories" && (
+          <InventoryPage onNavigate={setWorkspace} />
+        )}
+        {workspace === "settings" && (
+          <SettingsPage
+            onNavigate={setWorkspace}
+            onLanguageChange={setLanguage}
+          />
+        )}
+      </LanguageContext.Provider>
     );
   }
 

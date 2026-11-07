@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Brand } from "../app/Brand";
+import { useLanguage } from "../app/language";
 import { WorkspaceNav } from "../app/WorkspaceNav";
 import type { Workspace } from "../app/WorkspaceNav";
 import { ConfigPreview, NativeOperationPanel } from "./ConfigPreview";
@@ -84,6 +85,7 @@ export function InventoryPage({
 }: {
   onNavigate: (workspace: Workspace) => void;
 }) {
+  const { t } = useLanguage();
   const [view, setView] = useState<Awaited<ReturnType<typeof loadInventory>>>();
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
@@ -354,8 +356,13 @@ export function InventoryPage({
     <main className="identity-shell">
       <header className="identity-heading">
         <div>
-          <h1>Directorios</h1>
-          <p>Repositorios y reglas de identidad locales.</p>
+          <h1>{t("Directorios", "Directories")}</h1>
+          <p>
+            {t(
+              "Repositorios y reglas de identidad locales.",
+              "Local repositories and identity rules.",
+            )}
+          </p>
         </div>
         <div className="action-row">
           {view && !mode && !configOpen && (
@@ -365,7 +372,7 @@ export function InventoryPage({
               disabled={locked}
               onClick={() => void run("Consultando configuración…", openConfig)}
             >
-              Vista previa de Git
+              {t("Vista previa de Git", "Git preview")}
             </button>
           )}
           {error && (
@@ -378,7 +385,7 @@ export function InventoryPage({
                 )
               }
             >
-              Actualizar vista
+              {t("Actualizar vista", "Refresh view")}
             </button>
           )}
           {view && !directory && !mode && !configOpen && (
@@ -388,7 +395,7 @@ export function InventoryPage({
               disabled={locked}
               onClick={openScanPreferences}
             >
-              Preferencias
+              {t("Preferencias", "Preferences")}
             </button>
           )}
           {view && !mode && !configOpen && (
@@ -397,12 +404,15 @@ export function InventoryPage({
               disabled={locked}
               onClick={() => openPathForm("add")}
             >
-              Añadir directorio
+              {t("Añadir directorio", "Add directory")}
             </button>
           )}
         </div>
       </header>
-      <aside className="identity-sidebar" aria-label="Directorios registrados">
+      <aside
+        className="identity-sidebar"
+        aria-label={t("Directorios registrados", "Registered directories")}
+      >
         <Brand />
         <WorkspaceNav
           current="directories"
@@ -410,7 +420,7 @@ export function InventoryPage({
           disabled={locked}
         />
         <div className="list-heading">
-          <h2>Directorios</h2>
+          <h2>{t("Directorios", "Directories")}</h2>
           {view && <span>{view.directories.length}</span>}
         </div>
         {view?.directories.length ? (
@@ -434,14 +444,19 @@ export function InventoryPage({
           </ul>
         ) : (
           <p className="profile-empty">
-            {view ? "Aún no hay directorios." : "Inventario local"}
+            {view
+              ? t("Aún no hay directorios.", "No directories yet.")
+              : t("Inventario local", "Local inventory")}
           </p>
         )}
-        <footer className="sidebar-foot">Almacenamiento local</footer>
+        <footer className="sidebar-foot">
+          {t("Almacenamiento local", "Local storage")}
+        </footer>
       </aside>
       <section
         className="identity-panel inventory-panel"
         aria-label="Inventario"
+        lang="es"
         ref={panel}
       >
         <div className="identity-feedback">

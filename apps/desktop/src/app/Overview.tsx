@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Brand } from "./Brand";
 import { WorkspaceNav } from "./WorkspaceNav";
 import type { Workspace } from "./WorkspaceNav";
+import { useLanguage } from "./language";
 import { NativeOperationPanel } from "../inventory/ConfigPreview";
 import { inventoryApi, inventoryError } from "../inventory/inventoryApi";
 import type { ActivityItem, NativeOperation } from "../inventory/inventoryApi";
@@ -17,16 +18,19 @@ export function Overview({
   title,
   subtitle,
   busy,
+  contentLanguage,
   onNavigate,
   children,
 }: {
-  workspace: "setup" | "activity" | "github";
+  workspace: "setup" | "activity" | "github" | "settings";
   title: string;
   subtitle: string;
   busy?: boolean;
+  contentLanguage?: "es";
   onNavigate: Navigate;
   children: ReactNode;
 }) {
+  const { t } = useLanguage();
   return (
     <main className="identity-shell">
       <header className="identity-heading">
@@ -35,18 +39,24 @@ export function Overview({
           <p>{subtitle}</p>
         </div>
       </header>
-      <aside className="identity-sidebar" aria-label="Espacio de trabajo">
+      <aside
+        className="identity-sidebar"
+        aria-label={t("Espacio de trabajo", "Workspace")}
+      >
         <Brand />
         <WorkspaceNav
           current={workspace}
           onNavigate={onNavigate}
           disabled={busy}
         />
-        <footer className="sidebar-foot">Almacenamiento local</footer>
+        <footer className="sidebar-foot">
+          {t("Almacenamiento local", "Local storage")}
+        </footer>
       </aside>
       <section
         className="identity-panel inventory-panel overview-panel"
         aria-label={title}
+        lang={contentLanguage}
       >
         {children}
       </section>
@@ -66,6 +76,7 @@ export type SetupStatus = {
 export const loadSetup = () => invoke<SetupStatus>("setup_status");
 
 export function SetupPage({ onNavigate }: { onNavigate: Navigate }) {
+  const { t } = useLanguage();
   const [status, setStatus] = useState<SetupStatus>();
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -87,30 +98,40 @@ export function SetupPage({ onNavigate }: { onNavigate: Navigate }) {
   return (
     <Overview
       workspace="setup"
-      title="Inicio"
-      subtitle="Prepara tus identidades para Git."
+      title={t("Inicio", "Home")}
+      subtitle={t(
+        "Prepara tus identidades para Git.",
+        "Set up your identities for Git.",
+      )}
       onNavigate={onNavigate}
     >
-      <h2>Configura tu espacio de trabajo</h2>
+      <h2>{t("Configura tu espacio de trabajo", "Set up your workspace")}</h2>
       <p className="panel-intro">
-        Guarda tus perfiles, elige dónde usarlos y revisa la propuesta antes de
-        cambiar la configuración de Git.
+        {t(
+          "Guarda tus perfiles, elige dónde usarlos y revisa la propuesta antes de cambiar la configuración de Git.",
+          "Save your profiles, choose where to use them, and review the proposal before changing Git configuration.",
+        )}
       </p>
       {error ? (
-        <p role="alert">{error}</p>
+        <p role="alert" lang="es">
+          {error}
+        </p>
       ) : !status ? (
-        <p role="status">Comprobando Git…</p>
+        <p role="status">{t("Comprobando Git…", "Checking Git…")}</p>
       ) : (
         <ol className="overview-list">
           <li>
             <div>
-              <h3>Comprobar Git</h3>
+              <h3>{t("Comprobar Git", "Check Git")}</h3>
               <p className="inventory-meta">
                 {status.compatibleGit
                   ? status.gitVersion
                   : status.gitVersion
-                    ? `${status.gitVersion} · Actualiza a Git 2.39.5 o posterior.`
-                    : "Instala Git 2.39.5 o posterior, agrégalo a PATH y vuelve a abrir GitPilot."}
+                    ? `${status.gitVersion} · ${t("Actualiza a Git 2.39.5 o posterior.", "Update to Git 2.39.5 or later.")}`
+                    : t(
+                        "Instala Git 2.39.5 o posterior, agrégalo a PATH y vuelve a abrir GitPilot.",
+                        "Install Git 2.39.5 or later, add it to PATH, and reopen GitPilot.",
+                      )}
               </p>
             </div>
             <button
@@ -121,32 +142,45 @@ export function SetupPage({ onNavigate }: { onNavigate: Navigate }) {
                 setRevision(revision + 1);
               }}
             >
-              Comprobar de nuevo
+              {t("Comprobar de nuevo", "Check again")}
             </button>
           </li>
           <li>
             <div>
-              <h3>Crear o importar un perfil</h3>
+              <h3>
+                {t("Crear o importar un perfil", "Create or import a profile")}
+              </h3>
               <p className="inventory-meta">
                 {status.identities
-                  ? `Perfiles guardados · ${status.identities}`
-                  : "Define el nombre y el correo del commit."}
+                  ? `${t("Perfiles guardados", "Saved profiles")} · ${status.identities}`
+                  : t(
+                      "Define el nombre y el correo del commit.",
+                      "Set the commit author name and email.",
+                    )}
               </p>
             </div>
             <button
               className={status.identities ? "button" : "button primary"}
               onClick={() => onNavigate("identities")}
             >
-              Ir a identidades
+              {t("Ir a identidades", "Open identities")}
             </button>
           </li>
           <li>
             <div>
-              <h3>Registrar y asignar un directorio</h3>
+              <h3>
+                {t(
+                  "Registrar y asignar un directorio",
+                  "Register and assign a directory",
+                )}
+              </h3>
               <p className="inventory-meta">
                 {status.assignedDirectories
-                  ? `Directorios con regla propia · ${status.assignedDirectories}`
-                  : "Escanea una carpeta de trabajo y elige su perfil."}
+                  ? `${t("Directorios con regla propia", "Directories with assignments")} · ${status.assignedDirectories}`
+                  : t(
+                      "Escanea una carpeta de trabajo y elige su perfil.",
+                      "Scan a work folder and choose its profile.",
+                    )}
               </p>
             </div>
             <button
@@ -157,16 +191,22 @@ export function SetupPage({ onNavigate }: { onNavigate: Navigate }) {
               }
               onClick={() => onNavigate("directories")}
             >
-              Ir a directorios
+              {t("Ir a directorios", "Open directories")}
             </button>
           </li>
           <li>
             <div>
-              <h3>Revisar la configuración</h3>
+              <h3>{t("Revisar la configuración", "Review configuration")}</h3>
               <p className="inventory-meta">
                 {status.applied
-                  ? "Hay una aplicación global verificada."
-                  : "Abre Vista previa de Git en Directorios para comprobar el alcance."}
+                  ? t(
+                      "Hay una aplicación global verificada.",
+                      "A global configuration has been applied and verified.",
+                    )
+                  : t(
+                      "Abre Vista previa de Git en Directorios para comprobar el alcance.",
+                      "Open the Git preview in Directories to check its scope.",
+                    )}
               </p>
             </div>
           </li>
@@ -176,22 +216,35 @@ export function SetupPage({ onNavigate }: { onNavigate: Navigate }) {
   );
 }
 
-const stateLabel: Record<ActivityItem["state"], string> = {
-  preparing: "Aplicación pendiente",
-  applied: "Aplicada",
-  restoring: "Restauración pendiente",
-  restored: "Restaurada",
-  rolled_back: "Aplicación revertida",
-  kept: "Configuración conservada",
-};
-
-const timestamp = new Intl.DateTimeFormat("es", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
 export function ActivityPage({ onNavigate }: { onNavigate: Navigate }) {
+  const { language, t } = useLanguage();
+  const stateLabel: Record<ActivityItem["state"], string> = {
+    preparing: t("Aplicación pendiente", "Application pending"),
+    applied: t("Aplicada", "Applied"),
+    restoring: t("Restauración pendiente", "Restore pending"),
+    restored: t("Restaurada", "Restored"),
+    rolled_back: t("Aplicación revertida", "Rolled back"),
+    kept: t("Configuración conservada", "Configuration kept"),
+    exported: t("Configuración exportada", "Settings exported"),
+    imported: t("Configuración importada", "Settings imported"),
+  };
+  const scopeLabel: Record<ActivityItem["scope"], string> = {
+    global: "Global",
+    hook: "Pre-commit",
+    local: t("Repositorio", "Repository"),
+    data: t("Portabilidad", "Portability"),
+  };
+  const timestamp = new Intl.DateTimeFormat(language, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
   const [items, setItems] = useState<ActivityItem[]>();
+  const [filter, setFilter] = useState<"all" | "git" | "data">("all");
+  const visible = items?.filter(
+    (item) =>
+      filter === "all" ||
+      (filter === "data" ? item.scope === "data" : item.scope !== "data"),
+  );
   const [selected, setSelected] = useState<NativeOperation>();
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -227,66 +280,113 @@ export function ActivityPage({ onNavigate }: { onNavigate: Navigate }) {
   return (
     <Overview
       workspace="activity"
-      title="Actividad"
-      subtitle="Aplicaciones, restauraciones y decisiones."
+      title={t("Actividad", "Activity")}
+      subtitle={t(
+        "Historial local de Git y transferencias de datos.",
+        "Local history of Git operations and data transfers.",
+      )}
       busy={busy}
       onNavigate={onNavigate}
     >
       <div className="identity-feedback">
-        <div role="status">{busy ? "Comprobando operación…" : notice}</div>
-        {error && <p role="alert">{error}</p>}
+        <div role="status">
+          {busy ? t("Comprobando operación…", "Checking operation…") : notice}
+        </div>
+        {error && (
+          <p role="alert" lang="es">
+            {error}
+          </p>
+        )}
       </div>
       {selected ? (
-        <NativeOperationPanel
-          operation={selected}
-          busy={busy}
-          backLabel="Volver a actividad"
-          onBack={() => {
-            setSelected(undefined);
-            requestAnimationFrame(() =>
-              document.getElementById(`activity-${selected.id}`)?.focus(),
-            );
-          }}
-          onRestore={(confirmation) =>
-            void run(async () => {
-              try {
-                await inventoryApi.confirmNative(confirmation, true, {
-                  operationId: selected.id,
-                });
-                setSelected(undefined);
-                setNotice("Configuración anterior restaurada y verificada.");
-              } catch (problem) {
-                setSelected(
-                  (await inventoryApi.nativeStatus(selected.id)) ?? undefined,
-                );
-                throw problem;
-              } finally {
-                setItems(await inventoryApi.activity());
-              }
-            })
-          }
-        />
+        <div lang="es">
+          <NativeOperationPanel
+            operation={selected}
+            busy={busy}
+            backLabel="Volver a actividad"
+            onBack={() => {
+              setSelected(undefined);
+              requestAnimationFrame(() =>
+                document.getElementById(`activity-${selected.id}`)?.focus(),
+              );
+            }}
+            onRestore={(confirmation) =>
+              void run(async () => {
+                try {
+                  await inventoryApi.confirmNative(confirmation, true, {
+                    operationId: selected.id,
+                  });
+                  setSelected(undefined);
+                  setNotice(
+                    t(
+                      "Configuración anterior restaurada y verificada.",
+                      "Previous configuration restored and verified.",
+                    ),
+                  );
+                } catch (problem) {
+                  setSelected(
+                    (await inventoryApi.nativeStatus(selected.id)) ?? undefined,
+                  );
+                  throw problem;
+                } finally {
+                  setItems(await inventoryApi.activity());
+                }
+              })
+            }
+          />
+        </div>
       ) : (
         <>
-          <h2>Operaciones recientes</h2>
-          {items?.length ? (
+          <h2>{t("Operaciones recientes", "Recent operations")}</h2>
+          <div className="settings-row activity-controls">
+            <label htmlFor="activity-filter">{t("Mostrar", "Show")}</label>
+            <select
+              id="activity-filter"
+              value={filter}
+              onChange={(event) =>
+                setFilter(event.currentTarget.value as typeof filter)
+              }
+            >
+              <option value="all">{t("Todas", "All")}</option>
+              <option value="git">Git</option>
+              <option value="data">{scopeLabel.data}</option>
+            </select>
+            <button
+              className="button"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  setItems(await inventoryApi.activity());
+                  setNotice(t("Actividad actualizada.", "Activity refreshed."));
+                })
+              }
+            >
+              {t("Actualizar", "Refresh")}
+            </button>
+          </div>
+          {visible?.length ? (
             <ul className="overview-list">
-              {items.map((item) => (
-                <li key={item.id}>
+              {visible.map((item) => (
+                <li key={`${item.scope}:${item.id}`}>
                   <div>
                     <h3>
                       {stateLabel[item.state]}{" "}
                       <span className="inventory-meta">
-                        ·{" "}
-                        {item.scope === "global"
-                          ? "Global"
-                          : item.scope === "hook"
-                            ? "Pre-commit"
-                            : "Repositorio"}
+                        · {scopeLabel[item.scope]}
                       </span>
                     </h3>
-                    <p>{item.target}</p>
-                    <time className="inventory-meta">
+                    <p>
+                      {item.profileCount === null
+                        ? item.target
+                        : t(
+                            `Perfiles en el archivo · ${item.profileCount}`,
+                            `Profiles in file · ${item.profileCount}`,
+                          )}
+                    </p>
+                    <time
+                      className="inventory-meta"
+                      dateTime={item.at.replace(" ", "T") + "Z"}
+                    >
                       {timestamp.format(
                         new Date(item.at.replace(" ", "T") + "Z"),
                       )}
@@ -309,7 +409,7 @@ export function ActivityPage({ onNavigate }: { onNavigate: Navigate }) {
                         })
                       }
                     >
-                      Revisar operación
+                      {t("Revisar operación", "Review operation")}
                     </button>
                   )}
                 </li>
@@ -319,8 +419,16 @@ export function ActivityPage({ onNavigate }: { onNavigate: Navigate }) {
             !error && (
               <p className="panel-intro" role="status">
                 {items
-                  ? "Las operaciones que confirmes aparecerán aquí."
-                  : "Cargando actividad…"}
+                  ? filter === "all"
+                    ? t(
+                        "Las operaciones que confirmes aparecerán aquí.",
+                        "Confirmed operations will appear here.",
+                      )
+                    : t(
+                        "No hay operaciones para este filtro.",
+                        "No operations match this filter.",
+                      )
+                  : t("Cargando actividad…", "Loading activity…")}
               </p>
             )
           )}

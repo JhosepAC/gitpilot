@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Brand } from "../app/Brand";
+import { useLanguage } from "../app/language";
 import { WorkspaceNav } from "../app/WorkspaceNav";
 import type { Workspace } from "../app/WorkspaceNav";
 import { IdentityEditor } from "./IdentityEditor";
@@ -24,6 +25,7 @@ export function IdentitiesPage({
 }: {
   onNavigate: (workspace: Workspace) => void;
 }) {
+  const { t } = useLanguage();
   const [profiles, setProfiles] = useState<Identity[] | null>(null);
   const [pane, setPane] = useState<Pane>({ kind: "detail" });
   const [busy, setBusy] = useState(false);
@@ -130,7 +132,7 @@ export function IdentitiesPage({
         disabled={locked}
         onClick={() => show({ kind: "edit", input: emptyInput })}
       >
-        Nueva identidad
+        {t("Nueva identidad", "New identity")}
       </button>
     </div>
   );
@@ -139,12 +141,15 @@ export function IdentitiesPage({
     <main className="identity-shell">
       <header className="identity-heading">
         <div>
-          <h1>Identidades</h1>
-          <p>Perfiles de autor de Git.</p>
+          <h1>{t("Identidades", "Identities")}</h1>
+          <p>{t("Perfiles de autor de Git.", "Git author profiles.")}</p>
         </div>
         {!empty && pane.kind === "detail" && actions}
       </header>
-      <aside className="identity-sidebar" aria-label="Perfiles guardados">
+      <aside
+        className="identity-sidebar"
+        aria-label={t("Perfiles guardados", "Saved profiles")}
+      >
         <Brand />
         <WorkspaceNav
           current="identities"
@@ -152,7 +157,7 @@ export function IdentitiesPage({
           disabled={busy || pane.kind !== "detail"}
         />
         <div className="list-heading">
-          <h2>Perfiles</h2>
+          <h2>{t("Perfiles", "Profiles")}</h2>
           {profiles && <span>{profiles.length}</span>}
         </div>
         {profiles && profiles.length > 0 ? (
@@ -168,7 +173,9 @@ export function IdentitiesPage({
                   <span className="profile-label">{profile.label}</span>
                   <span className="profile-meta">{profile.email}</span>
                   {profile.isDefault && (
-                    <span className="profile-default">Predeterminada</span>
+                    <span className="profile-default">
+                      {t("Predeterminada", "Default")}
+                    </span>
                   )}
                 </button>
               </li>
@@ -177,19 +184,22 @@ export function IdentitiesPage({
         ) : (
           <p className="profile-empty">
             {profiles
-              ? "Todavía no hay perfiles."
+              ? t("Todavía no hay perfiles.", "No profiles yet.")
               : loadError
-                ? "Lista no disponible."
-                : "Cargando perfiles…"}
+                ? t("Lista no disponible.", "List unavailable.")
+                : t("Cargando perfiles…", "Loading profiles…")}
           </p>
         )}
-        <footer className="sidebar-foot">Almacenamiento local</footer>
+        <footer className="sidebar-foot">
+          {t("Almacenamiento local", "Local storage")}
+        </footer>
       </aside>
       <section
         className="identity-panel"
         ref={detail}
         tabIndex={-1}
         aria-label="Detalle de la identidad"
+        lang="es"
       >
         <div className="identity-feedback">
           <div role="status">{busy ? "Procesando…" : notice}</div>

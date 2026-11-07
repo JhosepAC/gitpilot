@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Overview } from "../app/Overview";
+import { useLanguage } from "../app/language";
 import type { Workspace } from "../app/WorkspaceNav";
 import { GithubResources } from "./GithubResources";
 import "./github.css";
@@ -93,6 +94,7 @@ export function GithubPage({
 }: {
   onNavigate: (workspace: Workspace) => void;
 }) {
+  const { t } = useLanguage();
   const [data, setData] = useState<Accounts>();
   const [selected, setSelected] = useState<number>();
   const [explore, setExplore] = useState(false);
@@ -292,7 +294,8 @@ export function GithubPage({
     <Overview
       workspace="github"
       title="GitHub"
-      subtitle="Cuentas y acceso a GitHub."
+      subtitle={t("Cuentas y acceso a GitHub.", "Accounts and GitHub access.")}
+      contentLanguage="es"
       busy={locked}
       onNavigate={onNavigate}
     >

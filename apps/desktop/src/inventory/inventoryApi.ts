@@ -70,9 +70,17 @@ export type ActivityItem = {
   id: number;
   target: string;
   state:
-    "preparing" | "applied" | "restoring" | "restored" | "rolled_back" | "kept";
-  scope: "local" | "global" | "hook";
+    | "preparing"
+    | "applied"
+    | "restoring"
+    | "restored"
+    | "rolled_back"
+    | "kept"
+    | "exported"
+    | "imported";
+  scope: "local" | "global" | "hook" | "data";
   at: string;
+  profileCount: number | null;
 };
 export type Diagnosis = {
   expected: {
