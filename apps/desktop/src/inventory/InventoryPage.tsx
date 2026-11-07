@@ -6,6 +6,7 @@ import type { Workspace } from "../app/WorkspaceNav";
 import { ConfigPreview, NativeOperationPanel } from "./ConfigPreview";
 import { RepositoryDiagnosis } from "./RepositoryDiagnosis";
 import { RepositoryInspector } from "./RepositoryInspector";
+import { ScanPreferencesPanel } from "./ScanPreferencesPanel";
 import type { InspectorData } from "./RepositoryInspector";
 import {
   folderName,
@@ -19,6 +20,7 @@ import type {
   NativeOperation,
   NativePreview,
   Repository,
+  ScanProgress,
   ScanReport,
 } from "./inventoryApi";
 import "./inventory.css";
@@ -37,8 +39,18 @@ const scanLimitMessages = {
   repositories: "Se alcanzó el límite de repositorios.",
 };
 
-function scanSummary({ partial, found, limits, skipped }: ScanReport) {
-  const state = partial ? "Escaneo parcial." : "Escaneo completo.";
+function scanSummary({
+  partial,
+  cancelled,
+  found,
+  limits,
+  skipped,
+}: ScanReport) {
+  const state = cancelled
+    ? "Escaneo cancelado."
+    : partial
+      ? "Escaneo parcial."
+      : "Escaneo completo.";
   const verified =
     found === 1
       ? "Se verificó 1 repositorio."
@@ -54,6 +66,19 @@ function scanSummary({ partial, found, limits, skipped }: ScanReport) {
   return [state, verified, ...details].join(" ");
 }
 
+type ScanRun = {
+  id: string;
+  progress?: ScanProgress;
+  cancellation: "ready" | "pending" | "finishing";
+};
+
+function scanStatus({ progress, cancellation }: ScanRun) {
+  if (progress?.phase === "saving" || cancellation === "finishing")
+    return "Guardando resultados…";
+  if (cancellation === "pending") return "Cancelando escaneo…";
+  return progress ? "Escaneando repositorios…" : "Preparando escaneo…";
+}
+
 export function InventoryPage({
   onNavigate,
 }: {
@@ -63,7 +88,10 @@ export function InventoryPage({
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [mode, setMode] = useState<"add" | "exclude" | "remove" | null>(null);
+  const [mode, setMode] = useState<
+    "add" | "exclude" | "remove" | "preferences" | null
+  >(null);
+  const [activeScan, setActiveScan] = useState<ScanRun>();
   const [preview, setPreview] = useState<NativePreview>();
   const [nativeOperation, setNativeOperation] = useState<NativeOperation>();
   const [localPreview, setLocalPreview] = useState<LocalPreview>();
@@ -75,12 +103,20 @@ export function InventoryPage({
   const localReviewButton = useRef<HTMLButtonElement>(null);
   const previewButton = useRef<HTMLButtonElement>(null);
   const inspectorButton = useRef<HTMLButtonElement>(null);
+  const preferencesButton = useRef<HTMLButtonElement>(null);
+  const scanButton = useRef<HTMLButtonElement>(null);
+  const cancelScanButton = useRef<HTMLButtonElement>(null);
+  const activeScanId = useRef<string>(undefined);
+  const restoreScanFocus = useRef(false);
   const directory = view?.directory;
   const repository = view?.repository;
   const configOpen = Boolean(
     preview || nativeOperation || localPreview || inspector,
   );
-  const locked = Boolean(busy || mode || configOpen);
+  const locked = Boolean(busy || mode || configOpen || activeScan);
+  const canCancelScan =
+    activeScan?.progress?.phase === "walking" &&
+    activeScan.cancellation === "ready";
 
   useEffect(() => {
     let mounted = true;
@@ -108,6 +144,17 @@ export function InventoryPage({
   useEffect(() => {
     if (localPreview) localReviewTitle.current?.focus({ preventScroll: true });
   }, [localPreview]);
+
+  useEffect(() => {
+    if (canCancelScan) cancelScanButton.current?.focus({ preventScroll: true });
+  }, [canCancelScan]);
+
+  useEffect(() => {
+    if (!activeScan && restoreScanFocus.current) {
+      restoreScanFocus.current = false;
+      scanButton.current?.focus({ preventScroll: true });
+    }
+  }, [activeScan]);
 
   async function run(message: string, operation: () => Promise<void>) {
     setBusy(message);
@@ -211,11 +258,56 @@ export function InventoryPage({
   }
 
   function scan(root: Directory) {
-    void run("Escaneando repositorios…", async () => {
-      const report = await inventoryApi.scan(root.id);
-      await refresh(root.id);
-      setNotice(scanSummary(report));
+    if (activeScanId.current) return;
+    const id = Array.from(crypto.getRandomValues(new Uint32Array(4)), (part) =>
+      part.toString(16).padStart(8, "0"),
+    ).join("");
+    activeScanId.current = id;
+    setActiveScan({ id, cancellation: "ready" });
+    void run("", async () => {
+      try {
+        const report = await inventoryApi.scan(root.id, id, (progress) => {
+          setActiveScan((current) =>
+            current?.id === id ? { ...current, progress } : current,
+          );
+        });
+        await refresh(root.id);
+        setError("");
+        setNotice(scanSummary(report));
+      } finally {
+        activeScanId.current = undefined;
+        restoreScanFocus.current = true;
+        setActiveScan(undefined);
+      }
     });
+  }
+
+  async function cancelScan() {
+    if (!canCancelScan || !activeScan) return;
+    const { id } = activeScan;
+    setActiveScan({ ...activeScan, cancellation: "pending" });
+    try {
+      const accepted = await inventoryApi.cancelScan(id);
+      if (!accepted) {
+        setActiveScan((current) =>
+          current?.id === id
+            ? { ...current, cancellation: "finishing" }
+            : current,
+        );
+      }
+    } catch (problem) {
+      if (activeScanId.current !== id) return;
+      setActiveScan((current) =>
+        current?.id === id ? { ...current, cancellation: "ready" } : current,
+      );
+      setError(inventoryError(problem));
+    }
+  }
+
+  function openScanPreferences() {
+    setError("");
+    setNotice("");
+    setMode("preferences");
   }
 
   function assign(target: Directory | Repository, value: string) {
@@ -287,6 +379,16 @@ export function InventoryPage({
               }
             >
               Actualizar vista
+            </button>
+          )}
+          {view && !directory && !mode && !configOpen && (
+            <button
+              className="button"
+              ref={preferencesButton}
+              disabled={locked}
+              onClick={openScanPreferences}
+            >
+              Preferencias
             </button>
           )}
           {view && !mode && !configOpen && (
@@ -404,6 +506,13 @@ export function InventoryPage({
             busy={Boolean(busy)}
             onBack={closeConfig}
             onConfirm={(confirmation) => confirmConfig(confirmation, false)}
+          />
+        ) : mode === "preferences" ? (
+          <ScanPreferencesPanel
+            onBack={() => {
+              setMode(null);
+              requestAnimationFrame(() => preferencesButton.current?.focus());
+            }}
           />
         ) : mode === "add" || mode === "exclude" ? (
           <>
@@ -567,15 +676,65 @@ export function InventoryPage({
           <>
             <div className="detail-heading">
               <h2>{folderName(directory.path)}</h2>
-              <button
-                className="button primary"
-                disabled={locked}
-                onClick={() => scan(directory)}
-              >
-                Escanear
-              </button>
+              <div className="action-row">
+                <button
+                  className="button"
+                  type="button"
+                  ref={preferencesButton}
+                  disabled={locked}
+                  onClick={openScanPreferences}
+                >
+                  Preferencias
+                </button>
+                <button
+                  className="button primary"
+                  type="button"
+                  ref={scanButton}
+                  disabled={locked}
+                  onClick={() => scan(directory)}
+                >
+                  Escanear
+                </button>
+              </div>
             </div>
             <p className="panel-intro">{directory.path}</p>
+            {activeScan && (
+              <section
+                className="inventory-scan-progress"
+                aria-labelledby="scan-progress-title"
+              >
+                <div className="inventory-scan-progress-heading">
+                  <h3 id="scan-progress-title">
+                    <span role="status">{scanStatus(activeScan)}</span>
+                  </h3>
+                  <button
+                    className="button"
+                    type="button"
+                    ref={cancelScanButton}
+                    disabled={!canCancelScan}
+                    onClick={() => void cancelScan()}
+                  >
+                    Cancelar escaneo
+                  </button>
+                </div>
+                {activeScan.progress && (
+                  <dl className="inventory-scan-counts">
+                    <div>
+                      <dt>Entradas recorridas</dt>
+                      <dd>{activeScan.progress.visited.toLocaleString()}</dd>
+                    </div>
+                    <div>
+                      <dt>Repositorios verificados</dt>
+                      <dd>{activeScan.progress.found.toLocaleString()}</dd>
+                    </div>
+                    <div>
+                      <dt>Rutas sin verificar</dt>
+                      <dd>{activeScan.progress.skipped.toLocaleString()}</dd>
+                    </div>
+                  </dl>
+                )}
+              </section>
+            )}
             {identitySelect(directory, "Identidad del directorio")}
             <p className="inventory-meta">
               Esta regla se guarda en GitPilot para calcular la identidad

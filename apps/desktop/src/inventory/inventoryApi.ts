@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { identityApi } from "../identities/identityApi";
 import type { InspectorData } from "./RepositoryInspector";
 
@@ -98,8 +98,28 @@ type Contents = { exclusions: string[]; repositories: Repository[] };
 export type ScanReport = {
   found: number;
   skipped: number;
+  visited: number;
   partial: boolean;
+  cancelled: boolean;
   limits: ("time" | "entries" | "depth" | "repositories")[];
+};
+
+export type ScanProgress = Pick<ScanReport, "found" | "skipped" | "visited"> & {
+  phase: "walking" | "saving";
+};
+
+export type ScanPreferences = {
+  timeSeconds: number;
+  maxEntries: number;
+  maxDepth: number;
+  maxRepositories: number;
+};
+
+export type ScanSettings = {
+  values: ScanPreferences;
+  defaults: ScanPreferences;
+  minimum: ScanPreferences;
+  maximum: ScanPreferences;
 };
 
 export const inventoryApi = {
@@ -129,7 +149,21 @@ export const inventoryApi = {
     invoke<void>("remove_directory", { id, revision }),
   exclude: ({ id, revision }: Directory, path: string, excluded: boolean) =>
     invoke<void>("set_directory_exclusion", { id, revision, path, excluded }),
-  scan: (id: number) => invoke<ScanReport>("scan_directory", { id }),
+  scan: (
+    id: number,
+    scanId: string,
+    onProgress: (progress: ScanProgress) => void,
+  ) =>
+    invoke<ScanReport>("scan_directory", {
+      id,
+      scanId,
+      onProgress: new Channel(onProgress),
+    }),
+  cancelScan: (scanId: string) =>
+    invoke<boolean>("cancel_directory_scan", { scanId }),
+  scanPreferences: () => invoke<ScanSettings>("read_scan_preferences"),
+  saveScanPreferences: (expected: ScanPreferences, values: ScanPreferences) =>
+    invoke<ScanSettings>("save_scan_preferences", { expected, values }),
   assign: (
     { id, revision }: Directory | Repository,
     repository: boolean,
@@ -167,6 +201,12 @@ export async function loadInventory(
 
 export function inventoryError(error: unknown) {
   switch (error) {
+    case "scan_preferences_invalid":
+      return "Revisa que los límites sean números enteros dentro de los intervalos indicados.";
+    case "scan_preferences_changed":
+      return "Las preferencias cambiaron en otra ventana. Recárgalas antes de guardar.";
+    case "scan_request_invalid":
+      return "No se pudo iniciar el escaneo. Vuelve a intentarlo.";
     case "stale_preview":
       return "La vista previa venció. Vuelve al inventario y ábrela de nuevo.";
     case "busy":
