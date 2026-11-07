@@ -2,7 +2,10 @@ use tauri::State;
 
 use crate::{
     application::Foundation,
-    infrastructure::github::{self, AccountStatus, FlowStatus, GithubError},
+    infrastructure::github::{
+        self, AccountStatus, FlowStatus, GithubError, Installation, Repository, ResourceError,
+        ResourcePage,
+    },
 };
 
 fn app(foundation: &Foundation) -> Result<&std::path::Path, GithubError> {
@@ -78,6 +81,42 @@ pub(crate) async fn github_check(
             foundation.database().map_err(|_| GithubError::Storage)?,
             app(&foundation)?,
             github_id,
+        )
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn github_installations(
+    foundation: State<'_, Foundation>,
+    github_id: i64,
+    page: u32,
+) -> Result<ResourcePage<Installation>, ResourceError> {
+    foundation
+        .github
+        .installations(
+            foundation.database().map_err(|_| GithubError::Storage)?,
+            app(&foundation)?,
+            github_id,
+            page,
+        )
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn github_repositories(
+    foundation: State<'_, Foundation>,
+    github_id: i64,
+    installation_id: i64,
+    page: u32,
+) -> Result<ResourcePage<Repository>, ResourceError> {
+    foundation
+        .github
+        .repositories(
+            foundation.database().map_err(|_| GithubError::Storage)?,
+            app(&foundation)?,
+            github_id,
+            installation_id,
+            page,
         )
         .await
 }

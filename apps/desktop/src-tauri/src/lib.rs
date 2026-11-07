@@ -51,6 +51,8 @@ pub fn run() -> tauri::Result<()> {
             github_commands::github_poll,
             github_commands::github_cancel,
             github_commands::github_check,
+            github_commands::github_installations,
+            github_commands::github_repositories,
             github_commands::github_open_verification,
             github_commands::github_disconnect,
             github_commands::github_open_authorizations,

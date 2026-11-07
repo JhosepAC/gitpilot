@@ -1,4 +1,4 @@
-use std::{path::Path, time::Duration};
+use std::{collections::HashMap, path::Path, time::Duration};
 
 use reqwest::{header, Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -11,6 +11,10 @@ use zeroize::Zeroizing;
 
 pub(crate) use super::github_accounts::AccountStatus;
 use super::github_accounts::{self, Accounts, Credential, ExpectedAccount};
+
+#[path = "github_resources.rs"]
+mod resources;
+pub(crate) use resources::{Installation, Repository, ResourceError, ResourcePage};
 
 pub(crate) const CLIENT_ID: &str = "Iv23libwtluOIgGw4BuU";
 pub(crate) const VERIFICATION_URI: &str = "https://github.com/login/device";
@@ -123,6 +127,7 @@ pub(crate) struct Github {
     session: Mutex<Option<Session>>,
     oauth_base: String,
     api_base: String,
+    resource_limits: Mutex<HashMap<i64, i64>>,
 }
 
 enum Work {
@@ -151,6 +156,7 @@ impl Github {
             session: Mutex::new(None),
             oauth_base: "https://github.com".into(),
             api_base: "https://api.github.com".into(),
+            resource_limits: Mutex::new(HashMap::new()),
         }
     }
 
@@ -383,29 +389,24 @@ impl Github {
         }
     }
 
-    async fn user(&self, token: &str) -> Result<RemoteUser, GithubError> {
+    fn api_get(&self, path: &str, token: &str) -> Result<RequestBuilder, GithubError> {
         let mut authorization = header::HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|_| GithubError::Protocol)?;
         authorization.set_sensitive(true);
-        let bytes = response(
-            self.client
-                .as_ref()
-                .ok_or(GithubError::Unavailable)?
-                .get(format!("{}/user", self.api_base))
-                .header(header::ACCEPT, "application/vnd.github+json")
-                .header("X-GitHub-Api-Version", "2026-03-10")
-                .header(header::AUTHORIZATION, authorization),
-        )
-        .await?;
+        Ok(self
+            .client
+            .as_ref()
+            .ok_or(GithubError::Unavailable)?
+            .get(format!("{}{path}", self.api_base))
+            .header(header::ACCEPT, "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2026-03-10")
+            .header(header::AUTHORIZATION, authorization))
+    }
+
+    async fn user(&self, token: &str) -> Result<RemoteUser, GithubError> {
+        let bytes = response(self.api_get("/user", token)?).await?;
         let user: RemoteUser = decode(&bytes)?;
-        if user.id <= 0
-            || user.login.is_empty()
-            || user.login.len() > 39
-            || !user
-                .login
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-        {
+        if user.id <= 0 || !valid_login(&user.login) {
             return Err(GithubError::Protocol);
         }
         Ok(user)
@@ -418,6 +419,16 @@ impl Github {
         id: i64,
     ) -> Result<AccountStatus, GithubError> {
         let store = Accounts::lock(pool, app)?;
+        self.account_credential(&store, id, true).await?;
+        store.status().await
+    }
+
+    async fn account_credential(
+        &self,
+        store: &Accounts<'_>,
+        id: i64,
+        verify: bool,
+    ) -> Result<Credential, GithubError> {
         let account = store.row(id).await?.ok_or(GithubError::NotConnected)?;
         let time = github_accounts::now()?;
         let (credential, rotation) = match account.state.as_str() {
@@ -461,6 +472,9 @@ impl Github {
             "reauthorize" => return Err(GithubError::Expired),
             _ => return Err(GithubError::Busy),
         };
+        if rotation.is_none() && !verify {
+            return Ok(credential);
+        }
         let user = match self.user(&credential.access_token).await {
             Ok(user) => user,
             Err(GithubError::NotConnected) => {
@@ -478,7 +492,7 @@ impl Github {
         } else {
             store.mark_verified(&account, &user.login).await?;
         }
-        store.status().await
+        Ok(credential)
     }
 
     async fn refresh(&self, current: &Credential, time: i64) -> Result<Credential, GithubError> {
@@ -536,6 +550,14 @@ impl Github {
     ) -> Result<AccountStatus, GithubError> {
         Accounts::lock(pool, app)?.acknowledge_revocation(id).await
     }
+}
+
+fn valid_login(login: &str) -> bool {
+    !login.is_empty()
+        && login.len() <= 39
+        && login
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 impl Tokens {
@@ -613,16 +635,24 @@ async fn response(request: RequestBuilder) -> Result<Zeroizing<Vec<u8>>, GithubE
         return Err(GithubError::Network);
     }
     let status = response.status();
-    let mut bytes = Zeroizing::new(Vec::new());
-    while let Some(chunk) = response.chunk().await.map_err(|_| GithubError::Network)? {
-        if bytes.len() + chunk.len() > 32_768 {
-            return Err(GithubError::Protocol);
-        }
-        bytes.extend_from_slice(&chunk);
-    }
+    let bytes = response_bytes(&mut response, 32_768).await?;
     if !status.is_success() {
         reject_oauth_error(&bytes)?;
         return Err(GithubError::Protocol);
+    }
+    Ok(bytes)
+}
+
+async fn response_bytes(
+    response: &mut reqwest::Response,
+    limit: usize,
+) -> Result<Zeroizing<Vec<u8>>, GithubError> {
+    let mut bytes = Zeroizing::new(Vec::new());
+    while let Some(chunk) = response.chunk().await.map_err(|_| GithubError::Network)? {
+        if chunk.len() > limit - bytes.len() {
+            return Err(GithubError::Protocol);
+        }
+        bytes.extend_from_slice(&chunk);
     }
     Ok(bytes)
 }
@@ -645,17 +675,33 @@ mod tests {
     struct Server {
         url: String,
         calls: Arc<AtomicUsize>,
+        authorizations: Arc<std::sync::Mutex<Vec<String>>>,
         worker: std::thread::JoinHandle<()>,
     }
 
     fn server(replies: Vec<(&'static str, String)>, delay: Duration) -> Server {
+        server_with_status(
+            replies
+                .into_iter()
+                .map(|(path, body)| (path, 200, "", body))
+                .collect(),
+            delay,
+        )
+    }
+
+    fn server_with_status(
+        replies: Vec<(&'static str, u16, &'static str, String)>,
+        delay: Duration,
+    ) -> Server {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let calls = Arc::new(AtomicUsize::new(0));
         let observed = calls.clone();
+        let authorizations = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let received_auth = authorizations.clone();
         let worker = std::thread::spawn(move || {
-            for (path, body) in replies {
+            for (path, status, headers, body) in replies {
                 let deadline = std::time::Instant::now() + Duration::from_secs(8);
                 let mut stream = loop {
                     match listener.accept() {
@@ -686,6 +732,13 @@ mod tests {
                 }
                 let text = String::from_utf8_lossy(&request);
                 assert!(text.lines().next().unwrap().contains(path));
+                if let Some(value) = text.lines().find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("authorization")
+                        .then(|| value.trim())
+                }) {
+                    received_auth.lock().unwrap().push(value.to_owned());
+                }
                 let header_end = request
                     .windows(4)
                     .position(|bytes| bytes == b"\r\n\r\n")
@@ -709,11 +762,16 @@ mod tests {
                 }
                 observed.fetch_add(1, Ordering::SeqCst);
                 std::thread::sleep(delay);
-                let reply = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                let reply = format!("HTTP/1.1 {status} Fixture\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n{body}", body.len());
                 let _ = stream.write_all(reply.as_bytes());
             }
         });
-        Server { url, calls, worker }
+        Server {
+            url,
+            calls,
+            authorizations,
+            worker,
+        }
     }
 
     fn fixture(server: &Server) -> Github {
@@ -729,6 +787,7 @@ mod tests {
             session: Mutex::new(None),
             oauth_base: server.url.clone(),
             api_base: server.url.clone(),
+            resource_limits: Mutex::new(HashMap::new()),
         }
     }
 
@@ -1063,6 +1122,106 @@ mod tests {
             service.disconnect(&pool, app, 84).await.unwrap();
             assert!(vault.read(&other_ref).await.is_err());
             pool.close().await;
+            server.worker.join().unwrap();
+        });
+    }
+
+    #[test]
+    #[ignore = "requires an isolated OS credential store"]
+    fn browses_authorized_resources_with_the_selected_credential() {
+        tauri::async_runtime::block_on(async {
+            let server = server_with_status(
+                vec![
+                    (
+                        "/user/installations?per_page=20&page=1",
+                        200,
+                        "Link: <https://example.test/unsafe>; rel=\"next\"\r\n",
+                        r#"{"installations":[{"id":7,"account":{"login":"example-org"},"target_type":"Organization","repository_selection":"selected","suspended_at":null}]}"#.into(),
+                    ),
+                    (
+                        "/user/installations?per_page=20&page=2",
+                        200,
+                        "X-GitHub-SSO: partial-results; organizations=123\r\n",
+                        r#"{"installations":[]}"#.into(),
+                    ),
+                    (
+                        "/user/installations/7/repositories?per_page=20&page=1",
+                        200,
+                        "",
+                        r#"{"repositories":[{"id":123,"full_name":"example-org/private-test","private":true,"archived":false,"clone_url":"https://example.test/never-forwarded"}]}"#.into(),
+                    ),
+                    (
+                        "/user/installations/7/repositories?per_page=20&page=2",
+                        429,
+                        "Retry-After: 120\r\n",
+                        "{}".into(),
+                    ),
+                    (
+                        "/user/installations?per_page=20&page=1",
+                        401,
+                        "",
+                        "{}".into(),
+                    ),
+                ],
+                Duration::ZERO,
+            );
+            let service = fixture(&server);
+            let directory = tempfile::tempdir().unwrap();
+            let app = directory.path();
+            let pool = super::super::storage::open(app).await.unwrap();
+            let other_tokens = TOKENS.replace("fixture_", "other_");
+            {
+                let store = Accounts::lock(&pool, app).unwrap();
+                for (id, login, tokens) in [(42, "first", TOKENS), (84, "other", &other_tokens)] {
+                    let credential = parse_tokens(tokens.as_bytes())
+                        .unwrap()
+                        .credential(id, github_accounts::now().unwrap());
+                    store.save(login, &credential, None).await.unwrap();
+                }
+            }
+            let page = service.installations(&pool, app, 42, 1).await.unwrap();
+            let page = serde_json::to_value(page).unwrap();
+            assert_eq!(page["items"][0]["kind"], "Organization");
+            assert_eq!(page["items"][0]["selection"], "selected");
+            assert_eq!(page["hasNext"], true);
+            let page = service.installations(&pool, app, 42, 2).await.unwrap();
+            assert_eq!(serde_json::to_value(page).unwrap()["partialSso"], true);
+            let page = service.repositories(&pool, app, 42, 7, 1).await.unwrap();
+            let page = serde_json::to_value(page).unwrap();
+            assert_eq!(page["items"][0]["fullName"], "example-org/private-test");
+            assert_eq!(page["items"][0]["visibility"], "private");
+            assert!(!page.to_string().contains("never-forwarded"));
+            let ResourceError::Limited { retry_at } = service
+                .repositories(&pool, app, 42, 7, 2)
+                .await
+                .err()
+                .unwrap()
+            else {
+                panic!("GitHub's retry deadline must be preserved");
+            };
+            assert!(retry_at >= github_accounts::now().unwrap() + 119);
+            assert!(matches!(
+                service.installations(&pool, app, 42, 1).await,
+                Err(ResourceError::Limited { retry_at: deadline }) if deadline == retry_at
+            ));
+            assert!(matches!(
+                service.installations(&pool, app, 84, 1).await,
+                Err(ResourceError::Account(GithubError::NotConnected))
+            ));
+            {
+                let store = Accounts::lock(&pool, app).unwrap();
+                assert_eq!(store.row(84).await.unwrap().unwrap().state, "reauthorize");
+                assert_eq!(store.row(42).await.unwrap().unwrap().state, "active");
+            }
+            assert_eq!(server.calls.load(Ordering::SeqCst), 5);
+            let auth = server.authorizations.lock().unwrap().clone();
+            assert_eq!(auth.len(), 5);
+            assert!(auth[..4]
+                .iter()
+                .all(|value| value.contains("fixture_access")));
+            assert!(auth[4].contains("other_access"));
+            service.disconnect(&pool, app, 42).await.unwrap();
+            service.disconnect(&pool, app, 84).await.unwrap();
             server.worker.join().unwrap();
         });
     }
