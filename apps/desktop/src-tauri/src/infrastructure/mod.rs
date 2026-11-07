@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod beta_probe;
 pub(crate) mod config_apply;
 mod config_backup;
 pub(crate) mod config_preview;
