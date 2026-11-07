@@ -259,9 +259,11 @@ export function NativeOperationPanel({
       </p>
       <div className="commit-author preview-destinations">
         <h3>
-          {operation.local
-            ? "Configuración del repositorio"
-            : "Configuración global"}
+          {operation.hook
+            ? "Hook pre-commit"
+            : operation.local
+              ? "Configuración del repositorio"
+              : "Configuración global"}
         </h3>
         <p>{operation.target}</p>
       </div>

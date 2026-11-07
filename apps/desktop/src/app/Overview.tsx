@@ -277,7 +277,12 @@ export function ActivityPage({ onNavigate }: { onNavigate: Navigate }) {
                     <h3>
                       {stateLabel[item.state]}{" "}
                       <span className="inventory-meta">
-                        · {item.scope === "global" ? "Global" : "Repositorio"}
+                        ·{" "}
+                        {item.scope === "global"
+                          ? "Global"
+                          : item.scope === "hook"
+                            ? "Pre-commit"
+                            : "Repositorio"}
                       </span>
                     </h3>
                     <p>{item.target}</p>

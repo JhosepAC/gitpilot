@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { HookControl, ProbeControl } from "./InspectorChecks";
 
 type Endpoint = { transport: string; host: string | null };
 type Keys = {
@@ -11,7 +12,12 @@ type Keys = {
 export type InspectorData = {
   branch: string | null;
   head: string | null;
-  tree: { staged: number; untracked: number; conflicts: number } | null;
+  tree: {
+    staged: number;
+    untracked: number;
+    conflicts: number;
+    unstaged: number | null;
+  } | null;
   remotes: { name: string; fetch: Endpoint[]; push: Endpoint[] }[];
   remotesPartial: boolean;
   ssh: {
@@ -100,8 +106,13 @@ function endpoints(values: Endpoint[]) {
 function KeyCounts({ keys }: { keys: Keys }) {
   return (
     <span>
-      {keys.present} presentes
-      {keys.missing > 0 && <> · {keys.missing} ausentes</>}
+      {keys.present} {keys.present === 1 ? "presente" : "presentes"}
+      {keys.missing > 0 && (
+        <>
+          {" "}
+          · {keys.missing} {keys.missing === 1 ? "ausente" : "ausentes"}
+        </>
+      )}
       {keys.restricted > 0 && <> · {keys.restricted} con permisos amplios</>}
       {keys.unchecked > 0 && <> · {keys.unchecked} sin verificar</>}
     </span>
@@ -111,10 +122,14 @@ function KeyCounts({ keys }: { keys: Keys }) {
 export function RepositoryInspector({
   data,
   name,
+  id,
+  ordinary,
   onBack,
 }: {
   data: InspectorData;
   name: string;
+  id: number;
+  ordinary: boolean;
   onBack: () => void;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
@@ -128,7 +143,7 @@ export function RepositoryInspector({
       <h2 className="preview-title" tabIndex={-1} ref={heading}>
         Inspector de Git
       </h2>
-      <p className="panel-intro">{name} · Diagnóstico local de solo lectura.</p>
+      <p className="panel-intro">{name} · Estado y comprobaciones de Git.</p>
       <div className="inventory-section">
         <h3>Rama e índice</h3>
         <p>
@@ -147,14 +162,20 @@ export function RepositoryInspector({
                 <dd>{tree.untracked}</dd>
               </div>
               <div>
+                <dt>Sin preparar</dt>
+                <dd>{tree.unstaged ?? "Sin verificar"}</dd>
+              </div>
+              <div>
                 <dt>En conflicto</dt>
                 <dd>{tree.conflicts}</dd>
               </div>
             </dl>
-            <p className="inventory-meta">
-              Consulta del índice y archivos sin seguimiento. Para revisar
-              cambios sin preparar en archivos rastreados, usa Git.
-            </p>
+            {tree.unstaged === null && (
+              <p className="inventory-meta">
+                Los filtros externos o un índice incompatible requieren
+                comprobar los cambios sin preparar desde Git.
+              </p>
+            )}
           </>
         ) : (
           <p className="inventory-meta">
@@ -175,6 +196,18 @@ export function RepositoryInspector({
                   <dt>Envío</dt>
                   <dd>{endpoints(remote.push)}</dd>
                 </dl>
+                {remote.fetch.length === 1 &&
+                  ["github.com", "gitlab.com", "bitbucket.org"].includes(
+                    remote.fetch[0].host ?? "",
+                  ) &&
+                  (remote.fetch[0].transport === "ssh" ||
+                    remote.fetch[0].transport === "https") && (
+                    <ProbeControl
+                      id={id}
+                      kind={remote.fetch[0].transport}
+                      remote={remote.name}
+                    />
+                  )}
               </li>
             ))}
           </ul>
@@ -261,7 +294,13 @@ export function RepositoryInspector({
               ? "Herramienta predeterminada detectada en PATH."
               : "Herramienta predeterminada sin detectar en PATH."}
         </p>
+        {signing.format === "ssh" &&
+          !signing.customProgram &&
+          ["public", "file"].includes(signing.keyReference) && (
+            <ProbeControl id={id} kind="signing" />
+          )}
       </div>
+      {ordinary && <HookControl id={id} />}
     </>
   );
 }

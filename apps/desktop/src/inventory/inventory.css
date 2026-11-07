@@ -160,6 +160,14 @@
   gap: 0.2rem 0.75rem;
 }
 
+.inspector-action {
+  margin-block: 0.625rem 0.25rem;
+}
+
+.inspector-action .action-row {
+  margin-block-start: 0.5rem;
+}
+
 @media (max-width: 36rem) {
   .inventory-diagnosis {
     grid-template-columns: minmax(0, 1fr);

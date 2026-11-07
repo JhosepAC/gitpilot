@@ -54,6 +54,7 @@ export type NativePreview = {
 export type NativeOperation = {
   id: number;
   local: boolean;
+  hook: boolean;
   state: "applied" | "recovery_required";
   target: string;
   confirmation: string | null;
@@ -70,7 +71,7 @@ export type ActivityItem = {
   target: string;
   state:
     "preparing" | "applied" | "restoring" | "restored" | "rolled_back" | "kept";
-  scope: "local" | "global";
+  scope: "local" | "global" | "hook";
   at: string;
 };
 export type Diagnosis = {
@@ -165,6 +166,8 @@ export function inventoryError(error: unknown) {
       return "Git u otra instancia mantiene un bloqueo. Espera y vuelve a intentarlo.";
     case "active_operation":
       return "Ya hay una aplicación activa para este destino. Puedes revisarla y restaurarla desde Actividad.";
+    case "identity_required":
+      return "Asigna un perfil al repositorio antes de preparar el hook.";
     case "unsafe_target":
       return "GitPilot no pudo comprobar el destino de forma segura.";
     case "backup_unavailable":

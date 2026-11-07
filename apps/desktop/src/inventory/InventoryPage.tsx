@@ -329,6 +329,8 @@ export function InventoryPage({
           <RepositoryInspector
             data={inspector}
             name={folderName(repository.path)}
+            id={repository.id}
+            ordinary={repository.kind === "ordinary"}
             onBack={() => {
               setInspector(undefined);
               requestAnimationFrame(() => inspectorButton.current?.focus());
