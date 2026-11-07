@@ -3,6 +3,8 @@
 ## Descubrir e inspeccionar
 
 - Escanear raíces elegidas por el usuario con límites de tiempo, profundidad y entradas. Excluir por componentes, evitar ciclos y omitir enlaces y junctions en el recorrido automático. Validar candidatos por Git, incluidos archivos `.git`, y diferenciar raíz de trabajo, Git dir efectivo y Git dir común. Identificar repositorios bare, submódulos y worktrees para el diagnóstico.
+
+- Verificar las carpetas del mismo nivel antes de recorrer sus descendientes. Al alcanzar el límite de entradas, verificar los candidatos ya en cola mientras quede tiempo. El informe distingue los límites alcanzados de las rutas que fallaron en la verificación. Los escaneos parciales conservan el inventario anterior.
 - Confirmar el contexto con `git rev-parse` e inspeccionar una lista explícita de claves con `git config`, incluyendo origen, ámbito y duplicados. Usar salida delimitada por NUL donde corresponda. Para identidad de commit, comprobar autor y committer con `git var`. Identificar Git no confiable o repositorio con ownership dudoso y mostrar error sin alterar `safe.directory`. [git rev-parse](https://git-scm.com/docs/git-rev-parse) · [git config](https://git-scm.com/docs/git-config)
 - Inspeccionar configuración de sistema, global (HOME/XDG o archivo redirigido), local, worktree, includes y precedencia por orden. Detectar entradas efectivas de entorno o de comando en el contexto inspeccionado. Mostrar el archivo y ámbito concretos antes de autorizar.
 

@@ -26,7 +26,7 @@ Los [wireframes de fase 0](WIREFRAMES.md) concretan los pasos y los estados de c
 
 **Identidades.** Una lista lateral muestra los perfiles y la selección predeterminada. El panel principal reúne el nombre y correo en «Autor del commit», con el uso local y las acciones debajo. Crear, editar e importar comparten un formulario. La importación empieza como borrador revisable y la eliminación se confirma en el panel. El uso local indica el predeterminado y el número de asignaciones.
 
-**Directorios.** La navegación lateral comparte la ventana fija con Identidades. Registrar una raíz requiere su ruta absoluta y el escaneo empieza al pulsar «Escanear». El panel informa del resultado y permite gestionar exclusiones y asignaciones. El detalle de cada repositorio distingue la identidad esperada de la configuración observada en Git y deja las rutas internas y los valores de autor y committer en secciones desplegables.
+**Directorios.** La navegación lateral comparte la ventana fija con Identidades. Registrar una raíz requiere su ruta absoluta y el escaneo empieza al pulsar «Escanear». El panel anuncia cuántos repositorios verificó y distingue los límites alcanzados de las rutas con errores. También permite gestionar exclusiones y asignaciones. El detalle de cada repositorio distingue la identidad esperada de la configuración observada en Git y deja las rutas internas y los valores de autor y committer en secciones desplegables.
 
 **Vista previa de Git.** Se abre en el panel de Directorios, con el destino y el manifiesto primero. Los repositorios con discrepancias aparecen antes que el resto. Se puede desplegar la comparación por campo y el patrón de cada regla. Volver al inventario conserva la selección y devuelve el foco al botón de entrada.
 
