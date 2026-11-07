@@ -73,7 +73,11 @@ pub(crate) async fn preview_inspector_probe(
 ) -> Result<inspector_probe::ProbePreview, inspector_probe::ProbeError> {
     let repository =
         inventory::repository(foundation.database().map_err(InventoryError::from)?, id).await?;
-    inspector_probe::preview(&repository, kind, remote.as_deref()).await
+    let app = foundation
+        .directory
+        .as_deref()
+        .ok_or(inspector_probe::ProbeError::Unavailable)?;
+    inspector_probe::preview(&repository, app, kind, remote.as_deref()).await
 }
 
 #[tauri::command]

@@ -592,7 +592,11 @@ async fn signing(exe: &Path, cwd: &Path, config: &Settings, ssh_dir: Option<&Pat
         key_file,
         custom_program: config.last(override_key).is_some()
             || (format == "openpgp" && config.last("gpg.program").is_some()),
-        default_program_available: !program.is_empty() && git::find_executable(program).is_some(),
+        default_program_available: if format == "openpgp" {
+            super::inspector_openpgp::executable(exe).is_some()
+        } else {
+            !program.is_empty() && git::find_executable(program).is_some()
+        },
     }
 }
 
@@ -641,6 +645,23 @@ fn ssh_directory(value: &str) -> Option<PathBuf> {
         return None;
     }
     Some(path)
+}
+
+pub(super) async fn ssh_home(exe: &Path, cwd: &Path) -> Option<PathBuf> {
+    let path = line(
+        exe,
+        cwd,
+        &[
+            "-c",
+            "gitpilot.sshdirectory=~/.ssh",
+            "config",
+            "--path",
+            "--get",
+            "gitpilot.sshdirectory",
+        ],
+    )
+    .await?;
+    ssh_directory(&path)
 }
 
 async fn key_info(dir: &Path, filename: &str, keys: &mut Keys, explicit: bool) {
@@ -838,23 +859,8 @@ pub(super) async fn context(repository: &Repository) -> Result<(PathBuf, &Path),
 
 pub(crate) async fn inspect(repository: &Repository) -> Result<Inspector, InventoryError> {
     let (exe, cwd) = context(repository).await?;
-    let (config, home) = tokio::join!(
-        settings(&exe, cwd),
-        line(
-            &exe,
-            cwd,
-            &[
-                "-c",
-                "gitpilot.sshdirectory=~/.ssh",
-                "config",
-                "--path",
-                "--get",
-                "gitpilot.sshdirectory"
-            ]
-        ),
-    );
+    let (config, ssh_dir) = tokio::join!(settings(&exe, cwd), ssh_home(&exe, cwd));
     let config = config?;
-    let ssh_dir = home.as_deref().and_then(ssh_directory);
     let (branch, head, tree, (remotes, remotes_partial), signing) = tokio::join!(
         line(&exe, cwd, &["symbolic-ref", "--quiet", "--short", "HEAD"]),
         line(&exe, cwd, &["rev-parse", "--verify", "--short", "HEAD"]),

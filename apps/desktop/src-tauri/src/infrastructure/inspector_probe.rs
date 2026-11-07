@@ -1,5 +1,6 @@
 use std::{
     path::{Path, PathBuf},
+    process::ExitStatus,
     time::Duration,
 };
 
@@ -9,14 +10,17 @@ use url::Url;
 
 use crate::repository::{InventoryError, Repository};
 
-use super::{git, inspector, native_file};
+use super::{git, inspector, inspector_credentials, inspector_openpgp, inspector_ssh, native_file};
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ProbeKind {
     Ssh,
+    SshConfigured,
     Https,
+    HttpsCredentials,
     Signing,
+    OpenPgp,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -27,6 +31,8 @@ pub(crate) enum ProbeError {
     Unavailable,
     TimedOut,
     Failed,
+    CredentialsUnavailable,
+    SigningUnavailable,
 }
 
 impl From<InventoryError> for ProbeError {
@@ -40,9 +46,12 @@ impl From<InventoryError> for ProbeError {
 pub(crate) struct ProbePreview {
     confirmation: String,
     host: Option<String>,
+    via: Option<String>,
+    key: Option<String>,
     kind: ProbeKind,
 }
 
+#[derive(Serialize)]
 enum Request {
     Remote {
         git: PathBuf,
@@ -50,17 +59,37 @@ enum Request {
         host: String,
         ssh: Option<PathBuf>,
     },
+    SshConfigured {
+        git: PathBuf,
+        url: String,
+        route: inspector_ssh::SshRoute,
+    },
+    HttpsCredentials {
+        git: PathBuf,
+        url: String,
+        host: String,
+        credentials: inspector_credentials::Credentials,
+    },
     Signature {
         keygen: PathBuf,
         public: String,
     },
+    OpenPgp(inspector_openpgp::OpenPgp),
 }
 
 fn allowed_host(host: &str) -> bool {
     matches!(host, "github.com" | "gitlab.com" | "bitbucket.org")
 }
 
-fn allowed_path(path: &str) -> bool {
+pub(super) fn allowed_ssh_host(host: &str) -> bool {
+    allowed_host(host)
+        || matches!(
+            host,
+            "ssh.github.com" | "altssh.gitlab.com" | "altssh.bitbucket.org"
+        )
+}
+
+pub(super) fn allowed_path(path: &str) -> bool {
     path.len() <= 512
         && path.split('/').count() >= 2
         && path.split('/').all(|part| {
@@ -100,7 +129,7 @@ fn remote_url(value: &str, kind: ProbeKind) -> Option<(String, String)> {
                         .find('@')
                         .is_none()
             }
-            ProbeKind::Signing => false,
+            _ => false,
         };
         if !valid || parsed.password().is_some() || parsed.port().is_some() {
             return None;
@@ -123,7 +152,7 @@ fn remote_url(value: &str, kind: ProbeKind) -> Option<(String, String)> {
         ProbeKind::Ssh if uri => format!("ssh://git@{host}/{path}"),
         ProbeKind::Ssh => format!("git@{host}:{path}"),
         ProbeKind::Https => format!("https://{host}/{path}"),
-        ProbeKind::Signing => return None,
+        _ => return None,
     };
     Some((url, host))
 }
@@ -157,8 +186,14 @@ async fn prepare_request(
     repo: &Repository,
     kind: ProbeKind,
     remote: Option<&str>,
+    scratch: &Path,
 ) -> Result<Request, ProbeError> {
     let (exe, cwd) = inspector::context(repo).await?;
+    if matches!(kind, ProbeKind::OpenPgp) {
+        return Ok(Request::OpenPgp(
+            inspector_openpgp::prepare(&exe, cwd).await?,
+        ));
+    }
     if matches!(kind, ProbeKind::Signing) {
         if inspector::line(&exe, cwd, &["config", "--get", "gpg.format"])
             .await
@@ -185,23 +220,12 @@ async fn prepare_request(
                 inspector::line(&exe, cwd, &["config", "--path", "--get", "user.signingkey"])
                     .await
                     .ok_or(ProbeError::Unsupported)?;
-            let directory = inspector::line(
-                &exe,
-                cwd,
-                &[
-                    "-c",
-                    "gitpilot.sshdirectory=~/.ssh",
-                    "config",
-                    "--path",
-                    "--get",
-                    "gitpilot.sshdirectory",
-                ],
-            )
-            .await
-            .ok_or(ProbeError::Unsupported)?;
+            let directory = inspector::ssh_home(&exe, cwd)
+                .await
+                .ok_or(ProbeError::Unsupported)?;
             let file = PathBuf::from(file);
             if !file.is_absolute()
-                || file.parent() != Some(Path::new(&directory))
+                || file.parent() != Some(directory.as_path())
                 || file.extension().and_then(|part| part.to_str()) != Some("pub")
             {
                 return Err(ProbeError::Unsupported);
@@ -235,13 +259,29 @@ async fn prepare_request(
     }
     let text = std::str::from_utf8(&value).map_err(|_| ProbeError::Unsupported)?;
     let mut lines = text.lines();
-    let (url, host) = lines
-        .next()
-        .and_then(|line| remote_url(line, kind))
-        .ok_or(ProbeError::Unsupported)?;
+    let value = lines.next().ok_or(ProbeError::Unsupported)?;
     if lines.next().is_some() {
         return Err(ProbeError::Unsupported);
     }
+    if matches!(kind, ProbeKind::SshConfigured) {
+        let route = inspector_ssh::prepare(&exe, cwd, value, scratch).await?;
+        return Ok(Request::SshConfigured {
+            git: exe,
+            url: value.into(),
+            route,
+        });
+    }
+    if matches!(kind, ProbeKind::HttpsCredentials) {
+        let (url, host) = remote_url(value, ProbeKind::Https).ok_or(ProbeError::Unsupported)?;
+        let credentials = inspector_credentials::prepare(&exe, cwd).await?;
+        return Ok(Request::HttpsCredentials {
+            git: exe,
+            url,
+            host,
+            credentials,
+        });
+    }
+    let (url, host) = remote_url(value, kind).ok_or(ProbeError::Unsupported)?;
     let ssh = if matches!(kind, ProbeKind::Ssh) {
         Some(git::find_executable("ssh").ok_or(ProbeError::Unavailable)?)
     } else {
@@ -257,15 +297,25 @@ async fn prepare_request(
 
 impl Request {
     fn preview(&self, repo: &Repository, kind: ProbeKind) -> Result<ProbePreview, ProbeError> {
-        let (material, host) = match self {
-            Self::Remote { url, host, .. } => (url, Some(host.clone())),
-            Self::Signature { public, .. } => (public, None),
+        let (host, via, key) = match self {
+            Self::Remote { host, .. } | Self::HttpsCredentials { host, .. } => {
+                (Some(host.clone()), None, None)
+            }
+            Self::SshConfigured { route, .. } => (
+                Some(route.target().into()),
+                route.via().map(str::to_owned),
+                None,
+            ),
+            Self::Signature { .. } => (None, None, None),
+            Self::OpenPgp(probe) => (None, None, Some(probe.key().into())),
         };
-        let bytes = serde_json::to_vec(&(&repo.path, &repo.git_dir, repo.revision, kind, material))
+        let bytes = serde_json::to_vec(&(&repo.path, &repo.git_dir, repo.revision, kind, self))
             .map_err(|_| ProbeError::Unavailable)?;
         Ok(ProbePreview {
             confirmation: hex::encode(native_file::digest(&bytes)),
             host,
+            via,
+            key,
             kind,
         })
     }
@@ -273,10 +323,12 @@ impl Request {
 
 pub(crate) async fn preview(
     repo: &Repository,
+    app: &Path,
     kind: ProbeKind,
     remote: Option<&str>,
 ) -> Result<ProbePreview, ProbeError> {
-    prepare_request(repo, kind, remote)
+    let scratch = scratch(app)?;
+    prepare_request(repo, kind, remote, scratch.path())
         .await?
         .preview(repo, kind)
 }
@@ -288,14 +340,12 @@ pub(crate) async fn verify(
     remote: Option<&str>,
     confirmation: &str,
 ) -> Result<(), ProbeError> {
-    let request = prepare_request(repo, kind, remote).await?;
+    let scratch = scratch(app)?;
+    let scratch = scratch.path();
+    let request = prepare_request(repo, kind, remote, scratch).await?;
     if request.preview(repo, kind)?.confirmation != confirmation {
         return Err(ProbeError::Stale);
     }
-    let scratch = tempfile::Builder::new()
-        .prefix("gitpilot-probe-")
-        .tempdir_in(app)
-        .map_err(|_| ProbeError::Unavailable)?;
     match request {
         Request::Remote {
             git: executable,
@@ -303,50 +353,100 @@ pub(crate) async fn verify(
             ssh,
             ..
         } => {
-            let mut command = git::isolated(&executable, scratch.path());
+            let mut command = git::isolated(&executable, scratch);
             if let Some(ssh) = ssh {
-                let ssh = ssh.to_str().ok_or(ProbeError::Unsupported)?;
-                let executable = if cfg!(windows) {
-                    ssh.replace('\\', "/")
-                } else {
-                    ssh.into()
-                };
-                let executable = format!("'{}'", executable.replace('\'', "'\\''"));
-                command.env("GIT_ALLOW_PROTOCOL", "ssh").env("GIT_SSH_VARIANT", "ssh")
-                    .env("GIT_SSH_COMMAND", format!("{executable} -F none -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=5 -o ServerAliveInterval=4 -o ServerAliveCountMax=1 -o ClearAllForwardings=yes"));
+                let executable = shell_path(&ssh)?;
+                ssh_command(&mut command, &format!("{executable} -F none -o BatchMode=yes -o StrictHostKeyChecking=yes -o UpdateHostKeys=no -o ConnectTimeout=5 -o ServerAliveInterval=4 -o ServerAliveCountMax=1 -o ClearAllForwardings=yes"));
             } else {
-                command
-                    .env("GIT_ALLOW_PROTOCOL", "https")
-                    .env("HOME", scratch.path())
-                    .env("USERPROFILE", scratch.path())
-                    .env("CURL_HOME", scratch.path())
-                    .args([
-                        "-c",
-                        "credential.helper=",
-                        "-c",
-                        "http.sslVerify=true",
-                        "-c",
-                        "http.followRedirects=false",
-                        "-c",
-                        "http.lowSpeedLimit=1",
-                        "-c",
-                        "http.lowSpeedTime=5",
-                    ]);
+                https_command(&mut command, scratch);
             }
-            success(
-                command.args(["ls-remote", "--quiet", "--", &url, "HEAD"]),
-                None,
-            )
-            .await
+            remote_read(&mut command, &url).await
+        }
+        Request::SshConfigured { git, url, route } => {
+            let mut command = git::isolated(&git, scratch);
+            ssh_command(&mut command, &route.command()?);
+            remote_read(&mut command, &url).await
+        }
+        Request::HttpsCredentials {
+            git,
+            url,
+            credentials,
+            ..
+        } => {
+            let header = credentials.header(&git, scratch, &url).await?;
+            let mut command = git::isolated(&git, scratch);
+            https_command(&mut command, scratch);
+            command
+                .env("GITPILOT_AUTH_HEADER", header.as_str())
+                .arg(format!(
+                    "--config-env=http.{url}.extraHeader=GITPILOT_AUTH_HEADER"
+                ));
+            remote_read(&mut command, &url).await
         }
         Request::Signature { keygen, public } => {
-            verify_signature(&keygen, scratch.path(), &public, None).await
+            verify_signature(&keygen, scratch, &public, None).await
         }
+        Request::OpenPgp(probe) => probe.verify(scratch).await,
     }
 }
 
-async fn success(command: &mut Command, input: Option<&[u8]>) -> Result<(), ProbeError> {
-    let (status, _) = git::output_with_input(command, Duration::from_secs(8), input)
+fn scratch(app: &Path) -> Result<tempfile::TempDir, ProbeError> {
+    tempfile::Builder::new()
+        .prefix("gitpilot-probe-")
+        .tempdir_in(app)
+        .map_err(|_| ProbeError::Unavailable)
+}
+
+pub(super) fn shell_path(path: &Path) -> Result<String, ProbeError> {
+    let path = path.to_str().ok_or(ProbeError::Unsupported)?;
+    let path = if cfg!(windows) {
+        path.replace('\\', "/")
+    } else {
+        path.into()
+    };
+    Ok(format!("'{}'", path.replace('\'', "'\\''")))
+}
+
+fn ssh_command(command: &mut Command, ssh: &str) {
+    command
+        .env("GIT_ALLOW_PROTOCOL", "ssh")
+        .env("GIT_SSH_VARIANT", "ssh")
+        .env("GIT_SSH_COMMAND", ssh);
+}
+
+fn https_command(command: &mut Command, scratch: &Path) {
+    command
+        .env("GIT_ALLOW_PROTOCOL", "https")
+        .env("HOME", scratch)
+        .env("USERPROFILE", scratch)
+        .env("CURL_HOME", scratch)
+        .args([
+            "-c",
+            "credential.helper=",
+            "-c",
+            "http.sslVerify=true",
+            "-c",
+            "http.followRedirects=false",
+            "-c",
+            "http.lowSpeedLimit=1",
+            "-c",
+            "http.lowSpeedTime=5",
+        ]);
+}
+
+async fn remote_read(command: &mut Command, url: &str) -> Result<(), ProbeError> {
+    success(
+        command.args(["ls-remote", "--quiet", "--", url, "HEAD"]),
+        None,
+    )
+    .await
+}
+
+pub(super) async fn bounded(
+    command: &mut Command,
+    input: Option<&[u8]>,
+) -> Result<(ExitStatus, Vec<u8>), ProbeError> {
+    git::output_with_input(command, Duration::from_secs(8), input)
         .await
         .map_err(|error| {
             if error.kind() == std::io::ErrorKind::TimedOut {
@@ -354,7 +454,11 @@ async fn success(command: &mut Command, input: Option<&[u8]>) -> Result<(), Prob
             } else {
                 ProbeError::Unavailable
             }
-        })?;
+        })
+}
+
+async fn success(command: &mut Command, input: Option<&[u8]>) -> Result<(), ProbeError> {
+    let (status, _) = bounded(command, input).await?;
     if status.success() {
         Ok(())
     } else {
