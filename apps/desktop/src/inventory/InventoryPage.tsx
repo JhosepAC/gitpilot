@@ -330,6 +330,7 @@ export function InventoryPage({
             data={inspector}
             name={folderName(repository.path)}
             id={repository.id}
+            path={repository.path}
             ordinary={repository.kind === "ordinary"}
             onBack={() => {
               setInspector(undefined);

@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HookControl, ProbeControl, RemoteProbes } from "./InspectorChecks";
+import { GithubLocalRemotes } from "../github/GithubRemoteLinks";
 
 type Endpoint = { transport: string; host: string | null };
 type Keys = {
@@ -123,16 +124,19 @@ export function RepositoryInspector({
   data,
   name,
   id,
+  path,
   ordinary,
   onBack,
 }: {
   data: InspectorData;
   name: string;
   id: number;
+  path: string;
   ordinary: boolean;
   onBack: () => void;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
+  const [linksOpen, setLinksOpen] = useState(false);
   useEffect(() => heading.current?.focus({ preventScroll: true }), []);
   const { tree, ssh, https, signing } = data;
   return (
@@ -219,6 +223,22 @@ export function RepositoryInspector({
             La lista de remotos es parcial.
           </p>
         )}
+        <div className="action-row">
+          <button
+            className="button"
+            type="button"
+            aria-expanded={linksOpen}
+            aria-controls="inspector-github-links"
+            onClick={() => setLinksOpen(!linksOpen)}
+          >
+            {linksOpen
+              ? "Ocultar vínculos de GitHub"
+              : "Ver vínculos de GitHub"}
+          </button>
+        </div>
+        <div id="inspector-github-links">
+          {linksOpen && <GithubLocalRemotes local={{ id, path }} />}
+        </div>
       </div>
       <div className="inventory-section">
         <h3>Acceso SSH</h3>
