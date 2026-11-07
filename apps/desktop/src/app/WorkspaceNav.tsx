@@ -1,9 +1,11 @@
-export type Workspace = "setup" | "identities" | "directories" | "activity";
+export type Workspace =
+  "setup" | "identities" | "directories" | "github" | "activity";
 
 const sections: Record<Workspace, string> = {
   setup: "Inicio",
   identities: "Identidades",
   directories: "Directorios",
+  github: "GitHub",
   activity: "Actividad",
 };
 

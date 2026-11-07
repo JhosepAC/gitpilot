@@ -6,6 +6,7 @@ import { Brand } from "./Brand";
 import { InventoryPage } from "../inventory/InventoryPage";
 import { ActivityPage, loadSetup, SetupPage } from "./Overview";
 import type { Workspace } from "./WorkspaceNav";
+import { GithubPage } from "../github/GithubPage";
 
 const messages = {
   loading: "Comprobando el almacenamiento local…",
@@ -36,6 +37,7 @@ export function App() {
     if (workspace === "setup") return <SetupPage onNavigate={setWorkspace} />;
     if (workspace === "activity")
       return <ActivityPage onNavigate={setWorkspace} />;
+    if (workspace === "github") return <GithubPage onNavigate={setWorkspace} />;
     return workspace === "identities" ? (
       <IdentitiesPage onNavigate={setWorkspace} />
     ) : (

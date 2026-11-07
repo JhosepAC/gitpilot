@@ -12,7 +12,7 @@ import "./overview.css";
 
 type Navigate = (workspace: Workspace) => void;
 
-function Overview({
+export function Overview({
   workspace,
   title,
   subtitle,
@@ -20,7 +20,7 @@ function Overview({
   onNavigate,
   children,
 }: {
-  workspace: "setup" | "activity";
+  workspace: "setup" | "activity" | "github";
   title: string;
   subtitle: string;
   busy?: boolean;
