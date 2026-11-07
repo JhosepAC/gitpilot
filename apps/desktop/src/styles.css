@@ -45,8 +45,7 @@
   letter-spacing: -0.02em;
 }
 
-.app-brand svg {
-  color: var(--accent);
+.app-brand img {
   flex: none;
 }
 
