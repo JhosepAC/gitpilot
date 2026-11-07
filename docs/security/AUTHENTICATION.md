@@ -1,6 +1,6 @@
 # Autenticación remota y firma
 
-Alcance posterior a v0.1.0. Avanzar con [ADR-004](../decisions/ADR-004-autenticacion.md) revisado.
+Alcance posterior a v0.1.0. El [ADR-004](../decisions/ADR-004-autenticacion.md) adopta GitHub App y Device Flow para la fase 6. La [especificación de GitHub](../architecture/GITHUB.md) concreta el registro y las entregas de implementación.
 
 | Capacidad | Comportamiento previsto |
 | --- | --- |
@@ -10,7 +10,7 @@ Alcance posterior a v0.1.0. Avanzar con [ADR-004](../decisions/ADR-004-autentica
 | GitHub OAuth | Conectar varias cuentas en el navegador, identificar por ID remoto y guardar tokens en el almacén del SO. Consultar perfil, organizaciones, repositorios autorizados, PR e issues. Gestionar expiración, cancelación, revocación y límites de API. |
 | Inspector y pre-commit | Mostrar la cuenta autenticada solo cuando sea comprobable. La advertencia en pre-commit se instala voluntariamente y debe coexistir con hooks del usuario. El bloqueo exige habilitación explícita y la desinstalación restaura el estado autorizado. |
 
-El flujo de escritorio candidato es Device Flow con un identificador público. El estudio comparará GitHub App y OAuth App por permisos mínimos, repositorios privados, organizaciones y revocación. Implementar polling que respete intervalos y expiración, y gestionar cancelación. Considerar autorización con PKCE solo si el flujo elegido funciona con cliente público y sin secretos embebidos. [Flujos de autorización de GitHub](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps)
+El flujo de escritorio elegido es Device Flow con el Client ID público de una GitHub App. Los permisos de lectura se definen en el registro. La implementación respetará los intervalos de consulta, la expiración y la cancelación, y verificará la cuenta antes de persistir la credencial. [Autorización de usuario de GitHub Apps](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app)
 
 Usar almacenes seguros por plataforma, con Windows Credential Manager y Linux Secret Service como candidatos. Si no están disponibles, explicar cómo habilitarlos y evitar persistir secretos. Al desconectar, retirar el secreto local y exponer si la revocación remota quedó pendiente. El acceso al API de GitHub, la clave usada para Git remoto y la identidad de commit pueden pertenecer a perfiles diferentes.
 
