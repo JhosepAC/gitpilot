@@ -1,0 +1,146 @@
+name: Release candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - name: Check trunk and CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "::error::Run this workflow from main."
+            exit 1
+          fi
+          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+            -f branch=main -f event=push -f head_sha="$GITHUB_SHA" -F per_page=1 |
+            jq -e '.workflow_runs[0] | .head_sha == env.GITHUB_SHA and .conclusion == "success"'
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Verify release metadata
+        id: version
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -s LICENSE
+          test -s NOTICE
+          python3 - <<'PY'
+          import json, os, re, tomllib
+          from pathlib import Path
+
+          desktop = Path("apps/desktop")
+          native = desktop / "src-tauri"
+          tauri = json.loads((native / "tauri.conf.json").read_text())
+          package = json.loads((desktop / "package.json").read_text())
+          lock = json.loads((desktop / "package-lock.json").read_text())
+          cargo = tomllib.loads((native / "Cargo.toml").read_text())
+          cargo_lock = tomllib.loads((native / "Cargo.lock").read_text())
+          rust_package = next(item for item in cargo_lock["package"] if item["name"] == cargo["package"]["name"])
+          version = tauri["version"]
+          versions = [package["version"], lock["version"], lock["packages"][""]["version"],
+                      cargo["package"]["version"], rust_package["version"]]
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) or any(v != version for v in versions):
+              raise SystemExit("Release versions must match in Tauri, npm, and Cargo")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"value={version}\n")
+          PY
+
+  windows:
+    needs: verify
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+      - name: Build Windows NSIS
+        working-directory: apps/desktop
+        run: |
+          rustc --version
+          npm ci
+          npm run tauri -- build --ci -- --locked
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: candidate-windows
+          path: apps/desktop/src-tauri/target/release/bundle/nsis/GitPilot_${{ needs.verify.outputs.version }}_x64-setup.exe
+          if-no-files-found: error
+          overwrite: true
+
+  debian:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Build Debian 12 amd64
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/work" -w /work/apps/desktop \
+            node:24-bookworm@sha256:994ed664b2644b1b186516daaa1fb7aa93a1e717da2a0ff17094c765d5dbfde1 \
+            bash -euc '
+              apt-get update
+              apt-get install -y --no-install-recommends build-essential pkg-config \
+                libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+              curl -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh
+              sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain none
+              export PATH="/root/.cargo/bin:$PATH"
+              rustc --version
+              npm ci
+              npm run tauri -- build --ci -- --locked
+            '
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: candidate-debian
+          path: apps/desktop/src-tauri/target/release/bundle/deb/GitPilot_${{ needs.verify.outputs.version }}_amd64.deb
+          if-no-files-found: error
+          overwrite: true
+
+  assemble:
+    needs: [verify, windows, debian]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: candidate-*
+          merge-multiple: true
+          path: candidate
+      - name: Record provenance and checksums
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          cp LICENSE NOTICE candidate/
+          cd candidate
+          printf 'version=%s\ncommit=%s\nworkflow_run=%s\n' \
+            "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" > BUILD-INFO.txt
+          sha256sum "GitPilot_${VERSION}_x64-setup.exe" "GitPilot_${VERSION}_amd64.deb" \
+            LICENSE NOTICE BUILD-INFO.txt > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: gitpilot-${{ needs.verify.outputs.version }}-candidate
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
