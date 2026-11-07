@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-github-account"
+description = "Authorize the registered GitHub App, verify the account and use the OS credential store"
+commands.allow = ["github_account", "github_session", "github_start", "github_poll", "github_cancel", "github_check", "github_open_verification"]

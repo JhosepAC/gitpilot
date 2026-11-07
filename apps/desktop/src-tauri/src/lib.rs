@@ -1,6 +1,7 @@
 mod application;
 mod commands;
 mod error;
+mod github_commands;
 mod identity;
 mod infrastructure;
 mod repository;
@@ -44,6 +45,13 @@ pub fn run() -> tauri::Result<()> {
             commands::set_identity_default,
             commands::delete_identity,
             commands::detect_git_identity,
+            github_commands::github_account,
+            github_commands::github_session,
+            github_commands::github_start,
+            github_commands::github_poll,
+            github_commands::github_cancel,
+            github_commands::github_check,
+            github_commands::github_open_verification,
             repository_commands::list_directories,
             repository_commands::add_directory,
             repository_commands::remove_directory,

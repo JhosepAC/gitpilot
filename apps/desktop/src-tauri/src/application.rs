@@ -8,6 +8,7 @@ pub(crate) struct Foundation {
     database: Result<SqlitePool, StorageError>,
     pub(crate) directory: Option<PathBuf>,
     pub(crate) inventory_scan: tokio::sync::Mutex<()>,
+    pub(crate) github: crate::infrastructure::github::Github,
 }
 
 impl Foundation {
@@ -25,6 +26,7 @@ impl Foundation {
             database,
             directory,
             inventory_scan: tokio::sync::Mutex::new(()),
+            github: crate::infrastructure::github::Github::new(),
         }
     }
 
