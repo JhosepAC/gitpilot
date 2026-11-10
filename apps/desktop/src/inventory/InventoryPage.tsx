@@ -313,14 +313,26 @@ export function InventoryPage({
   }
 
   function assign(target: Directory | Repository, value: string) {
-    void run("Guardando asignación…", async () => {
+    void run("Aplicando identidad a Git…", async () => {
       await inventoryApi.assign(
         target,
         "kind" in target,
         value ? Number(value) : null,
       );
+      try {
+        const preview = await inventoryApi.preview();
+        if (preview.confirmation) {
+          await inventoryApi.confirmNative(preview.confirmation, false);
+          setNotice(
+            "Identidad asignada y aplicada a Git con éxito (autor, firma y SSH activos).",
+          );
+        } else {
+          setNotice("Asignación guardada en GitPilot.");
+        }
+      } catch {
+        setNotice("Asignación guardada en GitPilot.");
+      }
       await refresh(directory?.id, repository?.id);
-      setNotice("Asignación guardada en GitPilot.");
     });
   }
 

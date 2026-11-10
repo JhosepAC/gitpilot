@@ -22,7 +22,8 @@ impl From<sqlx::Error> for IdentityError {
 pub(crate) async fn list(pool: &SqlitePool) -> Result<Vec<Identity>, IdentityError> {
     Ok(query_as(
         "SELECT id, label, git_name, email, is_default, revision,
-            (SELECT count(*) FROM identity_rules WHERE identity_id = identities.id) AS assignment_count
+            (SELECT count(*) FROM identity_rules WHERE identity_id = identities.id) AS assignment_count,
+            signing_key, signing_format, ssh_key
          FROM identities ORDER BY is_default DESC, label COLLATE NOCASE, id",
     )
     .fetch_all(pool)
@@ -32,11 +33,14 @@ pub(crate) async fn list(pool: &SqlitePool) -> Result<Vec<Identity>, IdentityErr
 pub(crate) async fn create(pool: &SqlitePool, input: IdentityInput) -> Result<i64, IdentityError> {
     let input = input.validate()?;
     Ok(query_scalar(
-        "INSERT INTO identities (label, git_name, email) VALUES (?, ?, ?) RETURNING id",
+        "INSERT INTO identities (label, git_name, email, signing_key, signing_format, ssh_key) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
     )
     .bind(input.label)
     .bind(input.git_name)
     .bind(input.email)
+    .bind(input.signing_key)
+    .bind(input.signing_format)
+    .bind(input.ssh_key)
     .fetch_one(pool)
     .await?)
 }
@@ -50,12 +54,16 @@ pub(crate) async fn update(
     let input = input.validate()?;
     query_scalar::<_, i64>(
         "UPDATE identities SET label = ?, git_name = ?, email = ?,
+            signing_key = ?, signing_format = ?, ssh_key = ?,
             revision = revision + 1, updated_at = CURRENT_TIMESTAMP
          WHERE id = ? AND revision = ? RETURNING id",
     )
     .bind(input.label)
     .bind(input.git_name)
     .bind(input.email)
+    .bind(input.signing_key)
+    .bind(input.signing_format)
+    .bind(input.ssh_key)
     .bind(id)
     .bind(revision)
     .fetch_one(pool)
@@ -69,8 +77,8 @@ pub(crate) async fn duplicate(
     revision: i64,
 ) -> Result<i64, IdentityError> {
     Ok(query_scalar(
-        "INSERT INTO identities (label, git_name, email)
-         SELECT substr(label, 1, 72) || ' (copia)', git_name, email
+        "INSERT INTO identities (label, git_name, email, signing_key, signing_format, ssh_key)
+         SELECT substr(label, 1, 72) || ' (copia)', git_name, email, signing_key, signing_format, ssh_key
          FROM identities WHERE id = ? AND revision = ? RETURNING id",
     )
     .bind(id)
@@ -144,6 +152,9 @@ mod tests {
             label: label.into(),
             git_name: "Ana López".into(),
             email: "ana@example.test".into(),
+            signing_key: None,
+            signing_format: None,
+            ssh_key: None,
         }
     }
 

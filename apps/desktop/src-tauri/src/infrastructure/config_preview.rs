@@ -24,6 +24,9 @@ struct Profile {
     label: String,
     git_name: String,
     email: String,
+    signing_key: Option<String>,
+    signing_format: Option<String>,
+    ssh_key: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -118,7 +121,7 @@ async fn snapshot(pool: &SqlitePool) -> Result<Policy, InventoryError> {
     .fetch_all(&mut *tx)
     .await?;
     let profiles: Vec<Profile> =
-        sqlx::query_as("SELECT id, revision, label, git_name, email FROM identities")
+        sqlx::query_as("SELECT id, revision, label, git_name, email, signing_key, signing_format, ssh_key FROM identities")
             .fetch_all(&mut *tx)
             .await?;
     let default_id = sqlx::query_scalar("SELECT id FROM identities WHERE is_default = 1")
@@ -256,11 +259,37 @@ fn include(path: &str) -> String {
 }
 
 fn profile_config(profile: &Profile) -> String {
-    format!(
+    let mut config = format!(
         "[user]\n\tname = {}\n\temail = {}\n",
         quote(&profile.git_name),
         quote(&profile.email)
-    )
+    );
+    if let Some(signing_key) = &profile.signing_key {
+        let trimmed = signing_key.trim();
+        if !trimmed.is_empty() {
+            let format = profile.signing_format.as_deref().unwrap_or("ssh");
+            let key_val = if format == "ssh" {
+                trimmed.replace('\\', "/")
+            } else {
+                trimmed.to_string()
+            };
+            config.push_str(&format!("\tsigningkey = {}\n", quote(&key_val)));
+            config.push_str("[commit]\n\tgpgsign = true\n");
+            config.push_str(&format!("[gpg]\n\tformat = {}\n", quote(format)));
+        }
+    }
+    if let Some(ssh_key) = &profile.ssh_key {
+        let trimmed = ssh_key.trim();
+        if !trimmed.is_empty() {
+            let formatted_key = trimmed.replace('\\', "/");
+            let cmd = format!(
+                "ssh -i '{}' -o IdentitiesOnly=yes",
+                formatted_key.replace('\'', "'\\''")
+            );
+            config.push_str(&format!("[core]\n\tsshCommand = {}\n", quote(&cmd)));
+        }
+    }
+    config
 }
 
 fn generated_files(rules: &[Rule]) -> BTreeMap<String, Vec<u8>> {
@@ -739,7 +768,34 @@ mod tests {
             label: label.into(),
             git_name: format!(r#"{label} "Fixture"\Git"#),
             email: format!("{id}@example.test"),
+            signing_key: None,
+            signing_format: None,
+            ssh_key: None,
         }
+    }
+
+    #[test]
+    fn profile_config_includes_signing_and_ssh_auth() {
+        let p = Profile {
+            id: 1,
+            revision: 1,
+            label: "Trabajo".into(),
+            git_name: "Ana Lopez".into(),
+            email: "ana@empresa.test".into(),
+            signing_key: Some("~/.ssh/id_ed25519_trabajo.pub".into()),
+            signing_format: Some("ssh".into()),
+            ssh_key: Some("~/.ssh/id_ed25519_trabajo".into()),
+        };
+        let cfg = profile_config(&p);
+        assert!(cfg.contains(r#"name = "Ana Lopez""#));
+        assert!(cfg.contains(r#"email = "ana@empresa.test""#));
+        assert!(cfg.contains(r#"signingkey = "~/.ssh/id_ed25519_trabajo.pub""#));
+        assert!(cfg.contains("gpgsign = true"));
+        assert!(cfg.contains(r#"format = "ssh""#));
+        assert!(cfg.contains(r#"[core]"#));
+        assert!(cfg.contains(
+            r#"sshCommand = "ssh -i '~/.ssh/id_ed25519_trabajo' -o IdentitiesOnly=yes""#
+        ));
     }
 
     async fn fixture_git(executable: &Path, cwd: &Path, global: &Path, args: &[&str]) {

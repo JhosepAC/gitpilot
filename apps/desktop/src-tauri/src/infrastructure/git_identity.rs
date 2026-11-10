@@ -59,6 +59,9 @@ fn parse_identity(output: &[u8]) -> Result<IdentityInput, IdentityError> {
         label: "Identidad de Git".into(),
         git_name: name.into(),
         email: email.into(),
+        signing_key: None,
+        signing_format: None,
+        ssh_key: None,
     })
 }
 

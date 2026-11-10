@@ -317,13 +317,15 @@
   font-weight: 600;
 }
 
-.field input {
+.field input,
+.field select {
   inline-size: 100%;
   min-block-size: 2.25rem;
   padding: 0.4rem 0.625rem;
   border: 1px solid var(--control-line);
   border-radius: 0.375rem;
   background: var(--surface);
+  color: var(--text);
   font-size: 0.875rem;
   font-weight: 400;
   caret-color: var(--accent);
@@ -332,6 +334,77 @@
 .field input::placeholder {
   color: var(--muted);
   opacity: 1;
+}
+
+.editor-group {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.editor-section {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.section-header h3 {
+  font-size: 0.875rem;
+  font-weight: 620;
+}
+
+.section-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.25rem;
+  background: rgba(245, 81, 30, 0.15);
+  color: var(--accent);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.section-badge.optional {
+  background: var(--selected);
+  color: var(--muted);
+}
+
+.field-help {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.field-help code,
+.code-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+  word-break: break-all;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 0.75rem;
+}
+
+.ssh-auth-card h3::before {
+  border-color: #3b82f6;
+}
+
+.signing-card h3::before {
+  border-color: #10b981;
 }
 
 @media (max-width: 45rem) {
