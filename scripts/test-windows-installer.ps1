@@ -42,7 +42,14 @@ function Open-InstalledApp {
         if (-not $ready) { throw 'Installed app did not open its window/database.' }
         Start-Sleep -Seconds 2
     } finally {
-        if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force; $process.WaitForExit() }
+        if (-not $process.HasExited) {
+            # Let WebView2 and SQLite release their handles before the next installation.
+            $closed = $process.CloseMainWindow()
+            if (-not $closed -or -not $process.WaitForExit(10000)) {
+                $process.Kill($true)
+                $process.WaitForExit()
+            }
+        }
     }
 }
 
@@ -55,7 +62,16 @@ if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($dataDir)) -ne [IO.Path]:
     [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($cleanBackup)) -ne [IO.Path]::GetFullPath($env:LOCALAPPDATA)) {
     throw 'Unexpected application-data paths.'
 }
-Move-Item -LiteralPath $dataDir -Destination $cleanBackup
+for ($attempt = 0; $attempt -lt 40; $attempt++) {
+    try {
+        Rename-Item -LiteralPath $dataDir -NewName ([IO.Path]::GetFileName($cleanBackup)) -ErrorAction Stop
+        break
+    } catch [System.IO.IOException] {
+        if ($attempt -eq 39) { throw }
+        Start-Sleep -Milliseconds 500
+    }
+}
+if (Test-Path -LiteralPath $dataDir) { throw 'Clean-install data still in use after shutdown.' }
 $cleanUninstaller = Start-Process -FilePath (Join-Path $installDir 'uninstall.exe') -ArgumentList '/S' -WindowStyle Hidden -PassThru -Wait
 if ($cleanUninstaller.ExitCode -ne 0) { throw 'Clean-install uninstallation failed.' }
 for ($attempt = 0; $attempt -lt 20 -and (Test-Path -LiteralPath (Join-Path $installDir 'gitpilot-desktop.exe')); $attempt++) { Start-Sleep -Milliseconds 500 }
