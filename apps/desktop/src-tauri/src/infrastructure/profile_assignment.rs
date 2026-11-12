@@ -16,7 +16,7 @@ pub(crate) struct AssignmentPreview {
     repositories: Vec<RepositoryPlan>,
 }
 
-#[cfg(all(test, windows))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
@@ -54,7 +54,7 @@ mod tests {
             let global = root.join(".gitconfig");
             let original = "[user]\nname = Global\nemail = global@example.test\nsigningkey = other-key\n[commit]\ngpgsign = true\n[core]\nsshCommand = other-identity-ssh\n";
             fs::write(&global, original).unwrap();
-            fs::create_dir_all(app.join("native")).unwrap();
+            native_file::private_directory(&app.join("native")).unwrap();
             let workspace = root.join("Proyectos [equipo]");
             fs::create_dir(&workspace).unwrap();
             let repo = workspace.join("repo");

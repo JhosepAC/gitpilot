@@ -834,6 +834,135 @@ fn same_value(
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires the isolated loopback SSH fixture in scripts/test-profile-remote.sh"]
+    fn profile_remote_keys_and_commit_signatures_are_independent() {
+        use std::process::Command;
+        let root =
+            PathBuf::from(env::var_os("GITPILOT_REMOTE_TEST_ROOT").expect("SSH fixture required"));
+        let repo = root.join("client");
+        let run = |args: &[&str]| {
+            Command::new("git")
+                .current_dir(&repo)
+                .env("HOME", root.join("home"))
+                .env("GNUPGHOME", root.join("gnupg"))
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", root.join("empty.config"))
+                .env_remove("GIT_SSH_COMMAND")
+                .env_remove("GIT_SSH")
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        assert!(run(&["init", "--quiet"]).status.success());
+        let selected = root.join("key-a");
+        let foreign = root.join("key-b");
+        let mut policy = profile(1, "SSH fixture");
+        policy.git_name = "Fixture Author".into();
+        policy.email = "fixture@example.test".into();
+        policy.ssh_key = Some(selected.to_str().unwrap().into());
+        let port = env::var("GITPILOT_REMOTE_TEST_PORT").unwrap();
+        let remote = format!("ssh://root@127.0.0.1:{port}{}/remote.git", root.display());
+        let write_policy = |policy: &Profile| {
+            std::fs::write(root.join("policy.config"), profile_config(policy)).unwrap();
+            assert!(run(&[
+                "config",
+                "include.path",
+                root.join("policy.config").to_str().unwrap()
+            ])
+            .status
+            .success());
+        };
+        let read_remote = || {
+            let output = run(&["config", "core.sshCommand"]);
+            assert!(output.status.success());
+            let command = format!(
+                "core.sshCommand={} -o StrictHostKeyChecking=yes -o UserKnownHostsFile={}",
+                String::from_utf8(output.stdout).unwrap().trim(),
+                root.join("known_hosts").display()
+            );
+            run(&["-c", &command, "ls-remote", &remote])
+                .status
+                .success()
+        };
+        write_policy(&policy);
+        assert!(read_remote(), "assigned key must authenticate");
+        policy.ssh_key = Some(foreign.to_str().unwrap().into());
+        write_policy(&policy);
+        assert!(
+            !read_remote(),
+            "another profile's key must not authenticate"
+        );
+        policy.ssh_key = None;
+        write_policy(&policy);
+        assert!(
+            !read_remote(),
+            "no key must not fall back to the default key or agent"
+        );
+
+        policy.signing_format = Some("ssh".into());
+        policy.signing_key = Some(foreign.to_str().unwrap().into());
+        policy.signing_required = true;
+        write_policy(&policy);
+        let output = run(&["commit", "--allow-empty", "-m", "SSH signed fixture"]);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let allowed = format!(
+            "gpg.ssh.allowedSignersFile={}",
+            root.join("allowed_signers").display()
+        );
+        assert!(run(&["-c", &allowed, "verify-commit", "HEAD"])
+            .status
+            .success());
+        assert!(
+            !read_remote(),
+            "signing key must not become an authentication key"
+        );
+        policy.signing_required = false;
+        write_policy(&policy);
+        assert!(
+            run(&["commit", "--allow-empty", "-m", "Optional unsigned fixture"])
+                .status
+                .success()
+        );
+        assert_eq!(
+            String::from_utf8(run(&["log", "-1", "--format=%G?"]).stdout)
+                .unwrap()
+                .trim(),
+            "N"
+        );
+        assert!(run(&[
+            "-c",
+            "commit.gpgsign=true",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "Explicit SSH signature"
+        ])
+        .status
+        .success());
+        assert!(run(&["-c", &allowed, "verify-commit", "HEAD"])
+            .status
+            .success());
+
+        policy.signing_format = Some("openpgp".into());
+        policy.signing_key = Some(env::var("GITPILOT_REMOTE_TEST_GPG_KEY").unwrap());
+        policy.signing_required = true;
+        write_policy(&policy);
+        let output = run(&["commit", "--allow-empty", "-m", "OpenPGP signed fixture"]);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(run(&["verify-commit", "HEAD"]).status.success());
+        assert!(!read_remote());
+    }
+
     fn profile(id: i64, label: &str) -> Profile {
         Profile {
             id,
