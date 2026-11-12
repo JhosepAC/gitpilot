@@ -60,4 +60,4 @@ La publicación debe usar el SHA final de `main` aprobado por Desktop CI. Las no
 
 La actualización agrega referencias de autenticación y firma y conserva la obligatoriedad de firma para perfiles anteriores que ya tenían clave. Revisa las rutas de las claves y reaplica cada perfil desde Directorios para materializar su política. Un perfil sin clave propia bloquea la autenticación SSH por clave. HTTPS sigue usando su helper configurado.
 
-Antes de publicar 1.1.0 deben resolverse los bloqueos documentados en [la revisión de seguridad](security/REVIEW_1_1_0.md).
+Las correcciones y el alcance de validación autorizado para 1.1.0 se detallan en [la revisión de seguridad](security/REVIEW_1_1_0.md). Las comprobaciones adicionales Linux se omiten por decisión del responsable. Incluir THIRD_PARTY_NOTICES.txt con los artefactos y en el manifiesto firmado.

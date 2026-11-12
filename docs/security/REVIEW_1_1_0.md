@@ -1,27 +1,35 @@
 # Revisión de seguridad del candidato 1.1.0
 
-Fecha: 2026-11-12. Estado: **publicación bloqueada por dependencias Rust**.
+Fecha: 2026-11-12. Estado: **bloqueos de dependencias corregidos; distribución pendiente de CI y verificación final**.
 
-## Alcance y resultados
+## Correcciones
 
-- Revisión de los cambios de interfaz, rutas representadas como texto React, capacidades Tauri y generación de comandos SSH. Sin nuevas capacidades privilegiadas en el rediseño. Se mantienen escapes de shell, validación de campos, confirmación ligada al plan, respaldo y verificación.
-- Búsqueda acotada de claves privadas y tokens en apps, docs y workflows: solo una cadena sintética de prueba de rechazo, sin material privado detectado. No equivale a una auditoría completa del historial.
-- `npm audit`: inicialmente 10 alertas derivadas de minimatch 10.2.6; tras fijar 11.0.1 con override, cero vulnerabilidades conocidas. ESLint, TypeScript, formato, compilación y las cuatro pruebas Vitest pasaron con el override.
-- `cargo audit` 0.23.0: dos vulnerabilidades en el lockfile y dos advertencias. Base RustSec revisada al 2026-11-12. No se ignoran alertas.
-
-## Bloqueos pendientes
-
-| Alerta | Evaluación y acción necesaria |
+| Hallazgo inicial | Resolución |
 | --- | --- |
-| RUSTSEC-2026-0459 / CVE-2026-119375 | libsqlite3-sys 0.30.1, activo por SQLx 0.8.6 y SQLite incluido. Una pareja de archivos DB/WAL manipulada puede exponer memoria del proceso. Corregido en libsqlite3-sys >=0.39.0. SQLx 0.9.0 admite <0.38.0, por lo que actualizar solo SQLx no elimina la alerta. Se necesita un controlador compatible con SQLite corregido o un parche del controlador revisado y validado en ambas plataformas. |
-| RUSTSEC-2023-0071 | rsa 0.9.10 aparece en Cargo.lock; `cargo tree -i rsa` no encuentra consumidores en el destino Windows activo. No se acreditó alcance en todos los destinos. Resolver el lockfile/controlador y repetir auditoría, sin ocultar la alerta por su inactividad en Windows. |
-| RUSTSEC-2024-0429 | Advertencia de unsoundness en glib 0.18.5 del ecosistema GTK de Linux; revisar actualización compatible de la cadena Tauri/GTK antes de distribuir Linux. |
-| RUSTSEC-2024-0370 | proc-macro-error sin mantenimiento; dependencia de compilación que requiere seguimiento y sustitución por upstream. |
+| GHSA-g3hv-75wg-m249 | minimatch 11.0.1 fijado; npm audit sin alertas tras npm ci. |
+| RUSTSEC-2026-0459 | SQLx 0.9.0 y backport mínimo de sqlx-sqlite para libsqlite3-sys 0.39.1. SQLite 3.54.1 comprobado en ejecución mediante prueba de migración con WAL en Windows y Linux. |
+| RUSTSEC-2023-0071 | RSA retirado del lockfile con SQLx 0.9.0 sin activar su feature RSA. |
+| RUSTSEC-2024-0429 | Corrección upstream de VariantStrIter aplicada a glib 0.18.5; cinco métodos comprobados en una prueba optimizada de Linux. |
+| RUSTSEC-2024-0370 | proc-macro-error sustituido por proc-macro-error3 3.1.1 con syn2 en las macros de GLib/GTK. |
 
-Referencias: https://rustsec.org/advisories/RUSTSEC-2026-0459.html, https://rustsec.org/advisories/RUSTSEC-2023-0071.html, https://rustsec.org/advisories/RUSTSEC-2024-0429.html, https://rustsec.org/advisories/RUSTSEC-2024-0370.html, https://github.com/advisories/GHSA-g3hv-75wg-m249.
+El [ADR-005](../decisions/ADR-005-security-backports.md) registra origen, licencias, modificaciones, mantenimiento y retirada de los cuatro backports. Sus fuentes y diferencias están versionadas; los avisos legales se incluyen en los instaladores.
 
-Desktop CI ejecuta las auditorías de npm y Cargo. Release candidate exige Desktop CI aprobado para el SHA de main, por lo que estas alertas impiden la distribución oficial. Un instalador local generado es exclusivamente un candidato; no se ha certificado libre de vulnerabilidades ni probado su instalación o actualización en esta revisión.
+## Auditoría y controles
 
-## Validación funcional
+`python scripts/audit-dependencies.py` verifica hashes y selección de cada copia y audita también las versiones originales de crates.io mediante un lockfile temporal. Solo reconoce el aviso conocido de GLib como corregido si las fuentes revisadas coinciden exactamente. Cualquier otro hallazgo bloquea CI. El resultado de cargo audit sobre dependencias path por sí solo no se usa como prueba de corrección.
 
-Windows: formato Rust, Clippy sin advertencias y pruebas Rust correctos (40 aprobadas, 5 omitidas por entorno especial). Frontend: formato, lint, comprobación de tipos, compilación y 4 pruebas correctos. El test de asignación usa Git y configuración temporales y comprueba aislamiento SSH, sustitución de claves, autor y restauración. No se repitió validación Linux ni las pruebas que necesitan almacenes de credenciales aislados. La revisión visual del rediseño no se completó por interferencia de entrada en el navegador.
+La base RustSec comprobada es `af7b3ec33460b8e2de8d422e16d628518891a519` (2026-11-12), 1490 avisos. Sin hallazgos pendientes en la auditoría completa de los backports. Se comprobó que revertir la corrección de GLib o ejecutar el verificador con assertions desactivadas produce un fallo.
+
+Gitleaks 8.30.1, obtenido de su release oficial y comprobado con SHA-256, analizó 73 commits y las fuentes vendorizadas sin detectar secretos. Actionlint 1.7.12 validó los workflows. Estos análisis no garantizan ausencia absoluta de vulnerabilidades.
+
+## Validaciones realizadas y límites
+
+- Windows: formato, Clippy, compilación, pruebas Rust habituales y las cinco pruebas antes omitidas de credenciales/rendimiento. Migración de base 1.0.0 con WAL, conservación de perfiles y reapertura correctas. Frontend: formato, lint, tipos y cuatro pruebas correctos.
+- Linux, ejecución anterior a la omisión solicitada: 48 pruebas incluidas las omitidas, con una sesión Secret Service aislada; prueba optimizada de GLib; Clippy y compilación correctos. Una prueba adicional con SSH loopback verificó acceso exclusivo por la clave asignada y firmas SSH/OpenPGP independientes. No representa una validación completa de la distribución Debian.
+- WebView2: menú vertical, carpetas homónimas con ruta accesible, asignaciones deduplicadas, rutas largas, navegación a Directorios y apertura/cancelación del selector nativo, con datos sintéticos y un identificador separado de QA.
+- Revisión visual Linux y comprobaciones adicionales Linux omitidas por instrucción expresa del responsable el 2026-11-12. No se contabilizan como aprobadas. CI funcional de esta entrega se limita a Windows; la auditoría de dependencias cubre el lockfile completo.
+- Permanecen advertencias de compilación heredadas en las copias de GLib/GTK; Clippy del proyecto pasa. Revisar upstream y retirar backports antes del 2026-12-12 o en la próxima release, lo que ocurra primero.
+
+## Condiciones de distribución
+
+El candidato definitivo debe construirse desde el SHA de main aprobado por CI, verificar sus sumas y su firma OpenPGP, y registrar la validación de instalación/actualización Windows antes de publicar. Las validaciones adicionales Linux quedan expresamente omitidas. Windows se distribuye sin Authenticode; las notas deben conservar esa información.
