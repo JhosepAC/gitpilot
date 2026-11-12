@@ -622,10 +622,15 @@ pub(crate) async fn apply(
     }
     .await;
     if result.is_err() {
+        #[cfg(test)]
+        eprintln!("configuration application failed before recovery: {result:?}");
         let operation = live(pool, repository, None, mode.is_some())
             .await?
             .ok_or(ApplyError::RecoveryRequired)?;
-        if recover(pool, &operation, false).await.is_err() {
+        let recovery = recover(pool, &operation, false).await;
+        #[cfg(test)]
+        eprintln!("configuration recovery result: {recovery:?}");
+        if recovery.is_err() {
             return Err(ApplyError::RecoveryRequired);
         }
     }

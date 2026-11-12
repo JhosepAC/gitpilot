@@ -83,6 +83,11 @@ mod tests {
             fs::write(&shared, "[user]\nname = Previous\nemail = previous@example.test\n[core]\nsshCommand = previous-ssh\n[gpg]\nformat = ssh\n").unwrap();
             run(&["config", "include.path", shared.to_str().unwrap()]);
             let local_original = fs::read(repo.join(".git/config")).unwrap();
+            let local_stamp = native_file::snapshot(&repo.join(".git/config"))
+                .unwrap()
+                .unwrap()
+                .stamp;
+            let global_stamp = native_file::snapshot(&global).unwrap().unwrap().stamp;
             let key = root.join("key with spaces %n 'quoted' $(exit 99)");
             fs::write(&key, "synthetic key reference").unwrap();
             let input = |label: &str, with_keys: bool| IdentityInput {
@@ -125,15 +130,31 @@ mod tests {
                 Err(ApplyError::KeyUnavailable)
             ));
             fs::write(&key, "synthetic key reference").unwrap();
-            apply(
+            let applied = apply(
                 &pool,
                 &app,
                 directory_id,
                 false,
                 first_plan.confirmation.as_deref().unwrap(),
             )
-            .await
-            .unwrap();
+            .await;
+            if applied.is_err() {
+                eprintln!(
+                    "fixture plan: {}",
+                    serde_json::to_string(&first_plan).unwrap()
+                );
+                eprintln!(
+                    "local before: {local_stamp:?}; local after: {:?}",
+                    native_file::snapshot(&repo.join(".git/config")).map(|s| s.map(|s| s.stamp))
+                );
+                eprintln!(
+                    "global before: {global_stamp:?}; global after: {:?}",
+                    native_file::snapshot(&global).map(|s| s.map(|s| s.stamp))
+                );
+                let operations: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as("SELECT state, target, candidate_id, recovery_id FROM config_operations ORDER BY rowid").fetch_all(&pool).await.unwrap();
+                eprintln!("fixture operations: {operations:?}");
+            }
+            applied.unwrap();
             assert_eq!(run(&["config", "user.name"]), "Selected Author");
             assert_eq!(run(&["config", "commit.gpgsign"]), "false");
             assert!(run(&["config", "core.sshCommand"]).contains("key with spaces"));
