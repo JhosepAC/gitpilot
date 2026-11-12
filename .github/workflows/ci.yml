@@ -45,6 +45,7 @@ jobs:
         working-directory: apps/desktop
         run: |
           npm ci
+          npm audit
           npm run format:check
           npm run lint
           npm run typecheck
@@ -58,3 +59,16 @@ jobs:
           cargo fmt --all -- --check
           cargo clippy --locked --features custom-protocol --all-targets -- -D warnings
           cargo test --locked --features custom-protocol
+
+  dependency-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Audit locked Rust dependencies
+        working-directory: apps/desktop/src-tauri
+        run: |
+          cargo install cargo-audit --version 0.23.0 --locked
+          cargo audit
