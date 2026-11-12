@@ -452,6 +452,73 @@ impl Drop for Stage {
     }
 }
 
+#[cfg(windows)]
+fn preserve_access(stage: &Path, target: &Path) -> io::Result<()> {
+    use std::{os::windows::io::AsRawHandle, ptr::null_mut};
+    use windows_sys::Win32::{
+        Foundation::LocalFree,
+        Security::{
+            Authorization::{GetSecurityInfo, SE_FILE_OBJECT},
+            GetSecurityDescriptorControl, SetFileSecurityW, DACL_SECURITY_INFORMATION,
+            GROUP_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION,
+            PROTECTED_DACL_SECURITY_INFORMATION, SE_DACL_PROTECTED,
+            UNPROTECTED_DACL_SECURITY_INFORMATION,
+        },
+    };
+    let original = options().read(true).open(target)?;
+    file_details(&original, false)?;
+    let expected = access_fingerprint(&original)?;
+    let information =
+        OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION;
+    let mut descriptor = null_mut();
+    let result = unsafe {
+        GetSecurityInfo(
+            original.as_raw_handle(),
+            SE_FILE_OBJECT,
+            information,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            &mut descriptor,
+        )
+    };
+    if result != 0 {
+        return Err(io::Error::from_raw_os_error(result as i32));
+    }
+    let copied = (|| {
+        let (mut control, mut revision) = (0, 0);
+        if unsafe { GetSecurityDescriptorControl(descriptor, &mut control, &mut revision) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let inheritance = if control & SE_DACL_PROTECTED != 0 {
+            PROTECTED_DACL_SECURITY_INFORMATION
+        } else {
+            UNPROTECTED_DACL_SECURITY_INFORMATION
+        };
+        if unsafe {
+            SetFileSecurityW(
+                wide(stage.as_os_str()).as_ptr(),
+                information | inheritance,
+                descriptor,
+            )
+        } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        // ReplaceFileW preserves the target DACL but not necessarily its owner
+        // and primary group. Verify the full descriptor on the staged file first.
+        let staged = options().read(true).open(stage)?;
+        file_details(&staged, false)?;
+        if access_fingerprint(&staged)? != expected || access_fingerprint(&original)? != expected {
+            return Err(unsafe_path());
+        }
+        Ok(())
+    })();
+    unsafe { LocalFree(descriptor) };
+    copied
+}
+
 pub(super) fn replace(stage: &Path, target: &Path, existed: bool) -> io::Result<()> {
     #[cfg(unix)]
     {
@@ -477,6 +544,9 @@ pub(super) fn replace(stage: &Path, target: &Path, existed: bool) -> io::Result<
     }
     #[cfg(windows)]
     {
+        if existed {
+            preserve_access(stage, target)?;
+        }
         use windows_sys::Win32::Storage::FileSystem::{
             MoveFileExW, ReplaceFileW, MOVEFILE_WRITE_THROUGH,
         };
@@ -509,4 +579,56 @@ pub(super) fn sync_parent(path: &Path) -> io::Result<()> {
     #[cfg(windows)]
     let _ = path;
     Ok(())
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replacement_preserves_explicit_windows_security_group() {
+        use windows_sys::Win32::{
+            Foundation::LocalFree,
+            Security::{
+                Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW,
+                SetFileSecurityW, GROUP_SECURITY_INFORMATION,
+            },
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("config");
+        fs::write(&target, b"original").unwrap();
+        let group = wide(std::ffi::OsStr::new("G:WD"));
+        let mut descriptor = std::ptr::null_mut();
+        assert_ne!(
+            unsafe {
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    group.as_ptr(),
+                    1,
+                    &mut descriptor,
+                    std::ptr::null_mut(),
+                )
+            },
+            0
+        );
+        let changed = unsafe {
+            SetFileSecurityW(
+                wide(target.as_os_str()).as_ptr(),
+                GROUP_SECURITY_INFORMATION,
+                descriptor,
+            )
+        };
+        let error = io::Error::last_os_error();
+        unsafe { LocalFree(descriptor) };
+        assert_ne!(changed, 0, "{error}");
+        let before = snapshot(&target).unwrap().unwrap().stamp;
+        let mut stage = Stage::create(directory.path().join("stage"), Some(&before)).unwrap();
+        stage.write(b"changed", Some(&before)).unwrap();
+        replace(&stage.path, &target, true).unwrap();
+        let after = snapshot(&target).unwrap().unwrap();
+        assert_eq!(after.bytes, b"changed");
+        assert!(
+            before.same_permissions(&after.stamp),
+            "Windows ownership/group/ACL changed"
+        );
+    }
 }

@@ -33,3 +33,8 @@ Gitleaks 8.30.1, obtenido de su release oficial y comprobado con SHA-256, analiz
 ## Condiciones de distribución
 
 El candidato definitivo debe construirse desde el SHA de main aprobado por CI, verificar sus sumas y su firma OpenPGP, y registrar la validación de instalación/actualización Windows antes de publicar. Las validaciones adicionales Linux quedan expresamente omitidas. Windows se distribuye sin Authenticode; las notas deben conservar esa información.
+
+
+### Corrección adicional de permisos Windows
+
+CI identificó que ReplaceFileW no garantiza conservar el propietario y grupo del destino. Una prueba local con grupo explícito reprodujo el cambio de metadatos. El reemplazo ahora copia el descriptor del destino al staging, conserva la protección de herencia y verifica su huella antes de modificar el destino. Continúa verificando los permisos tras publicar y durante restauración. Si no se puede conservar el descriptor, la operación falla de forma conservadora. La prueba de regresión pasó tras la corrección. Referencia: https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew.

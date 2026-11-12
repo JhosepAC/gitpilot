@@ -2,6 +2,8 @@
 
 ## 1.1.0
 
+- Conservación del propietario, grupo y ACL al reemplazar y recuperar archivos de configuración en Windows.
+
 - SQLite actualizado a 3.54.1 mediante SQLx 0.9 y backport compatible; corrección de GLib y sustitución de macros sin mantenimiento, con auditoría e integridad verificadas.
 - Pruebas adicionales de migración con WAL, acceso SSH aislado y firma SSH/OpenPGP.
 
