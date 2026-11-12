@@ -30,15 +30,25 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if ($env:VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version.' }
           $env:PATH = (Join-Path $env:ProgramFiles 'Git\usr\bin') + ';' + $env:PATH
+          function ConvertTo-GpgPath([string]$Path) {
+              # Git for Windows ships the MSYS build of GPG, which requires POSIX paths.
+              $converted = & cygpath.exe -a -u -- $Path
+              if ($LASTEXITCODE -ne 0 -or -not $converted.StartsWith('/')) { throw 'Could not normalize GPG path.' }
+              return $converted
+          }
           $public = Join-Path $env:RUNNER_TEMP 'public-release'
           New-Item -ItemType Directory -Path $public | Out-Null
           gh release download "v$env:VERSION" --repo $env:GITHUB_REPOSITORY --dir $public
           if ($LASTEXITCODE -ne 0) { throw 'Could not download public release.' }
           $keyring = Join-Path $env:RUNNER_TEMP 'verify-keyring'
           New-Item -ItemType Directory -Path $keyring | Out-Null
-          gpg --homedir $keyring --batch --import (Join-Path $public 'GitPilot-release-key.asc')
+          $keyring = ConvertTo-GpgPath $keyring
+          $publicKey = ConvertTo-GpgPath (Join-Path $public 'GitPilot-release-key.asc')
+          $manifest = ConvertTo-GpgPath (Join-Path $public 'SHA256SUMS.txt')
+          $signature = ConvertTo-GpgPath (Join-Path $public 'SHA256SUMS.txt.asc')
+          gpg --homedir $keyring --batch --import $publicKey
           if ($LASTEXITCODE -ne 0) { throw 'Could not import public distribution key.' }
-          $status = gpg --homedir $keyring --batch --status-fd 1 --verify (Join-Path $public 'SHA256SUMS.txt.asc') (Join-Path $public 'SHA256SUMS.txt')
+          $status = gpg --homedir $keyring --batch --status-fd 1 --verify $signature $manifest
           if ($LASTEXITCODE -ne 0) { throw 'Invalid public release signature.' }
           $valid = @($status | Where-Object { $_ -match '^\[GNUPG:\] VALIDSIG ' })
           if ($valid.Count -ne 1) { throw 'Expected one valid manifest signature.' }

@@ -239,3 +239,7 @@ Se detectaron atajos de zoom desactivados por defecto en WebView2. `tauri.window
 ### Cierre del proceso en la comprobación del instalador
 
 El candidato de Actions 43326816007 compiló Windows y Debian y abrió la instalación limpia de Windows, pero la fixture no pudo mover sus datos: WebView2 retenía handles tras Stop-Process. El harness ahora solicita cierre normal, espera hasta diez segundos y solo fuerza el árbol del proceso propio si no termina. La transferencia de datos temporales reintenta durante veinte segundos para esperar la liberación de handles. No se omite la comprobación ni se usan datos locales del mantenedor. Debe repetirse el candidato completo tras integrar este cambio.
+
+### Normalización de rutas en GPG de Git for Windows
+
+El candidato 43329145260 superó instalación limpia, apertura, cierre y retirada inicial, pero el verificador GPG de la fixture recibió un homedir nativo de Windows y lo interpretó como relativo. El harness y la comprobación pública convierten homedir, clave, manifiesto y firma con `cygpath -a -u`. La reproducción local con el mismo GPG MSYS falló con ruta nativa y pasó con la convertida: importación de clave pública, firma oficial de 1.0.0 y SHA-256 del NSIS anterior verificados. El homedir temporal de GPG debe ser corto por los límites de sus sockets; los runners usan RUNNER_TEMP.

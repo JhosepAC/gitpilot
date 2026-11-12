@@ -15,6 +15,13 @@ $gitConfig = Join-Path $fixture 'gitconfig'
 Set-Content -LiteralPath $gitConfig -Value "[user]`nname = Installer Fixture`nemail = fixture@example.test`n" -Encoding utf8
 $gitHash = (Get-FileHash -LiteralPath $gitConfig).Hash
 
+function ConvertTo-GpgPath([string]$Path) {
+    # Git for Windows ships the MSYS build of GPG, which requires POSIX paths.
+    $converted = & cygpath.exe -a -u -- $Path
+    if ($LASTEXITCODE -ne 0 -or -not $converted.StartsWith('/')) { throw 'Could not normalize GPG path.' }
+    return $converted
+}
+
 function Install-Package([string]$Path) {
     $process = Start-Process -FilePath $Path -ArgumentList "/S /D=$installDir" -WindowStyle Hidden -PassThru -Wait
     if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
@@ -83,12 +90,15 @@ gh release download v1.0.0 --repo $env:GITHUB_REPOSITORY --dir $previous --patte
 if ($LASTEXITCODE -ne 0) { throw 'Could not download the previous official release.' }
 $gpgHome = Join-Path $fixture 'gnupg'
 New-Item -ItemType Directory -Path $gpgHome | Out-Null
-$key = Join-Path $previous 'GitPilot-release-key.asc'
+$gpgHome = ConvertTo-GpgPath $gpgHome
+$key = ConvertTo-GpgPath (Join-Path $previous 'GitPilot-release-key.asc')
+$manifest = ConvertTo-GpgPath (Join-Path $previous 'SHA256SUMS.txt')
+$signature = ConvertTo-GpgPath (Join-Path $previous 'SHA256SUMS.txt.asc')
 $fingerprints = & gpg --homedir $gpgHome --batch --with-colons --show-keys $key
 if ($LASTEXITCODE -ne 0 -or -not ($fingerprints -match '^fpr:::::::::47B10C26AF8BC9615DE39C5813EF6F27474B5E0F:')) { throw 'Unexpected distribution key.' }
 & gpg --homedir $gpgHome --batch --import $key
 if ($LASTEXITCODE -ne 0) { throw 'Could not import the public distribution key.' }
-& gpg --homedir $gpgHome --batch --verify (Join-Path $previous 'SHA256SUMS.txt.asc') (Join-Path $previous 'SHA256SUMS.txt')
+& gpg --homedir $gpgHome --batch --verify $signature $manifest
 if ($LASTEXITCODE -ne 0) { throw 'Invalid signature for the previous release.' }
 $oldInstaller = Join-Path $previous 'GitPilot_1.0.0_x64-setup.exe'
 $line = Get-Content -LiteralPath (Join-Path $previous 'SHA256SUMS.txt') | Where-Object { $_ -match '\s+\*?GitPilot_1\.0\.0_x64-setup\.exe$' }
