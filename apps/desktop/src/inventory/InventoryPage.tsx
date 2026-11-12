@@ -475,15 +475,31 @@ export function InventoryPage({
               <li key={root.id}>
                 <button
                   type="button"
-                  className="profile-choice"
+                  className="profile-choice directory-choice"
+                  title={root.path}
+                  aria-label={`${folderName(root.path)} - ${root.path}`}
                   aria-current={root.id === directory?.id ? "true" : undefined}
                   disabled={locked}
                   onClick={() =>
                     void run("Cargando directorio…", () => refresh(root.id))
                   }
                 >
+                  <svg
+                    className="directory-choice-icon"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path d="M3 7V4h6l2 3h10v13H3V7Z" />
+                  </svg>
                   <span className="profile-label">{folderName(root.path)}</span>
-                  <span className="profile-meta">{root.path}</span>
                 </button>
               </li>
             ))}

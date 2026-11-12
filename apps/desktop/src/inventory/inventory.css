@@ -227,3 +227,24 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.profile-choice.directory-choice {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-block-size: 2.5rem;
+}
+
+.directory-choice-icon {
+  flex: none;
+  color: var(--muted);
+}
+
+.directory-choice[aria-current] .directory-choice-icon {
+  color: var(--text);
+}
+
+.directory-choice .profile-label {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
