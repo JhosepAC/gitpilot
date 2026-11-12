@@ -67,13 +67,21 @@
 }
 
 .workspace-nav {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  display: flex;
+  flex-direction: column;
   gap: 0.25rem;
   margin-block-end: 1.25rem;
 }
 
+.workspace-nav-icon {
+  flex: none;
+}
+
 .workspace-nav button {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-block-size: 2.25rem;
   text-align: start;
   padding: 0.35rem 0.5rem;
   border: 1px solid transparent;
