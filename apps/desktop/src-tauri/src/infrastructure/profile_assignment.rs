@@ -30,6 +30,11 @@ mod tests {
         const ROOT: &str = "GITPILOT_ASSIGNMENT_TEST_ROOT";
         let Some(root) = env::var_os(ROOT) else {
             let home = tempfile::tempdir().unwrap();
+            // Windows runners may expose TEMP through an 8.3 alias. Git and the
+            // guarded writer must see the same canonical home, not two aliases.
+            let home_path =
+                tauri::async_runtime::block_on(discovery::directory_path(home.path())).unwrap();
+            let home_path = Path::new(&home_path);
             let mut child = Command::new(env::current_exe().unwrap());
             for (key, _) in env::vars_os() {
                 if key
@@ -41,7 +46,7 @@ mod tests {
                 }
             }
             let status = child.args(["--exact", "infrastructure::profile_assignment::tests::assigned_profiles_replace_inherited_keys_and_restore_in_order", "--nocapture"])
-                .env(ROOT, home.path()).env("HOME", home.path()).env("USERPROFILE", home.path()).env("XDG_CONFIG_HOME", home.path().join("xdg")).env("GIT_CONFIG_NOSYSTEM", "1").status().unwrap();
+                .env(ROOT, home_path).env("HOME", home_path).env("USERPROFILE", home_path).env("XDG_CONFIG_HOME", home_path.join("xdg")).env("GIT_CONFIG_NOSYSTEM", "1").status().unwrap();
             assert!(status.success());
             return;
         };
@@ -107,6 +112,11 @@ mod tests {
                 .await
                 .unwrap();
             let first_plan = prepare(&pool, &app, directory_id, false).await.unwrap();
+            assert!(
+                first_plan.confirmation.is_some(),
+                "{}",
+                serde_json::to_string(&first_plan).unwrap()
+            );
             assert_eq!(fs::read_to_string(&global).unwrap(), original);
             assert_eq!(fs::read(repo.join(".git/config")).unwrap(), local_original);
             fs::remove_file(&key).unwrap();

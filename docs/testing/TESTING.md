@@ -215,3 +215,10 @@ Los tiempos proceden del perfil de pruebas local. La memoria se observó mediant
 - En WebView2 se verificó el PNG de GitPilot en las seis secciones, la ventana fija de 900 × 600 y el reflujo a 390 px. En WebKitGTK se verificó el logo al reabrir Identidades en la ventana fija.
 - Se actualizó el NSIS de 0.1.0 a 1.0.0 con un identificador aislado de QA. Se verificaron los perfiles, los repositorios y los archivos de licencia y atribución instalados. En Debian se actualizó el paquete de 0.1.0 a 1.0.0, se comprobó SQLite y se compararon los archivos Git global y local del fixture byte a byte.
 - `actionlint` validó el workflow del candidato. Se comprobó la consulta de CI para un SHA exacto de `main` y el rechazo de versiones desalineadas en los manifiestos. Los candidatos locales tienen SHA-256. La ejecución de GitHub Actions corresponde al commit del candidato una vez integrado en `main`. [Proceso de distribución](../RELEASING.md)
+
+
+## Cierre 1.1.0: rutas temporales de CI
+
+La primera ejecución de Desktop CI del cierre detectó una confirmación ausente en el fixture de asignación. El fixture ahora canonicaliza su carpeta temporal antes de pasar HOME, USERPROFILE y XDG_CONFIG_HOME al proceso hijo, evitando que un alias Windows 8.3 se compare con su ruta larga al comprobar destinos seguros. Conserva la validación estricta de rutas de producción y muestra el plan completo del fixture si falta confirmación.
+
+La prueba pasó localmente tanto con TEMP habitual como con TEMP/TMP apuntando a un alias 8.3 real obtenido mediante GetShortPathNameW. Las bases, repositorios y configuraciones usados fueron temporales. La validación remota del commit corregido debe pasar antes de construir el candidato.
