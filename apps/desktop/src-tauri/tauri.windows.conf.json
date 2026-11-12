@@ -9,5 +9,20 @@
         "languages": ["Spanish", "English"]
       }
     }
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "GitPilot",
+        "width": 900,
+        "height": 600,
+        "resizable": false,
+        "maximizable": false,
+        "theme": "Dark",
+        "backgroundColor": "#101010",
+        "zoomHotkeysEnabled": true
+      }
+    ]
   }
 }

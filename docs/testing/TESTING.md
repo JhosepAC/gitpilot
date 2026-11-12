@@ -229,3 +229,9 @@ El diagnóstico posterior detectó un cambio real del descriptor de seguridad al
 ### Herencia ACL de Windows Server durante el cierre 1.1.0
 
 CI detectó que ReplaceFileW duplicaba las ACE heredadas en ACL sin el indicador AI. El motor publica el staging verificado mediante MoveFileExW en el mismo directorio. Las pruebas `replacement_preserves_explicit_windows_security_group`, `replacement_preserves_legacy_inherited_windows_acl` y `refuses_windows_configuration_with_alternate_streams` verifican metadatos y rechazo seguro sin eliminar streams. El rechazo se extiende a archivos comprimidos, cifrados y sparse. La huella del journal conserva su formato anterior.
+
+### Interacción Windows y zoom en el cierre 1.1.0
+
+Instancia con identificador `dev.gitpilot.releaseqa.closure20261112`, base sintética y Git global redirigido a una fixture. Verificados menú vertical, tres reglas sin duplicar el repositorio bajo raíces solapadas, rutas largas completas, carpetas homónimas, desplazamiento con Ctrl+Fin, foco visible con Tab y navegación a Directorios con Enter. No se escribieron configuraciones Git desde la interfaz.
+
+Se detectaron atajos de zoom desactivados por defecto en WebView2. `tauri.windows.conf.json` activa `zoomHotkeysEnabled` conservando las dimensiones y propiedades de la ventana. En la instancia aislada se comprobaron los cinco incrementos nativos de Ctrl+numpad+, de 100% a 200%, reflujo a una columna y acceso a los controles finales con Ctrl+Fin; Ctrl+0 restableció el tamaño. No se modifican capacidades IPC ni configuración de Linux. La revisión no acredita todos los estados de error ni una auditoría WCAG completa.

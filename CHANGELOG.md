@@ -2,11 +2,10 @@
 
 ## 1.1.0
 
+- Zoom por teclado habilitado en Windows, con reflujo comprobado hasta 200%.
 - Conservación del propietario, grupo y ACL al reemplazar y recuperar archivos de configuración en Windows.
-
 - SQLite actualizado a 3.54.1 mediante SQLx 0.9 y backport compatible; corrección de GLib y sustitución de macros sin mantenimiento, con auditoría e integridad verificadas.
 - Pruebas adicionales de migración con WAL, acceso SSH aislado y firma SSH/OpenPGP.
-
 - Autenticación remota SSH por identidad: configura `core.sshCommand` con la clave privada elegida, activado automáticamente vía `includeIf gitdir:` al asignar un directorio.
 - Firma de commits por identidad: soporte para claves SSH y OpenPGP (`commit.gpgsign`, `gpg.format`, `user.signingkey`) sin tocar la configuración global.
 - Asignación de perfiles con vista previa, confirmación, respaldo y verificación de la configuración efectiva, incluso ante valores globales o locales anteriores. Editar una identidad requiere reaplicarla desde Directorios.
