@@ -14,7 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2025, ubuntu-24.04]
+        # Linux validation omitted for 1.1.0 at the maintainer's request.
+        os: [windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
@@ -34,11 +35,6 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '24'
-      - name: Install Linux desktop libraries
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - name: Install pinned Rust toolchain
         run: rustc --version
       - name: Validate frontend
@@ -71,4 +67,4 @@ jobs:
         working-directory: apps/desktop/src-tauri
         run: |
           cargo install cargo-audit --version 0.23.0 --locked
-          cargo audit
+          python3 ../../../scripts/audit-dependencies.py

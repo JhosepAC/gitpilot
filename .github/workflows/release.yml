@@ -77,6 +77,11 @@ jobs:
           rustc --version
           npm ci
           npm run tauri -- build --ci -- --locked
+      - name: Validate Windows installation and upgrade
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/test-windows-installer.ps1 -Installer "apps/desktop/src-tauri/target/release/bundle/nsis/GitPilot_${{ needs.verify.outputs.version }}_x64-setup.exe"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: candidate-windows
@@ -130,12 +135,12 @@ jobs:
         env:
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
-          cp LICENSE NOTICE candidate/
+          cp LICENSE NOTICE docs/legal/THIRD_PARTY_NOTICES.txt candidate/
           cd candidate
           printf 'version=%s\ncommit=%s\nworkflow_run=%s\n' \
             "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" > BUILD-INFO.txt
           sha256sum "GitPilot_${VERSION}_x64-setup.exe" "GitPilot_${VERSION}_amd64.deb" \
-            LICENSE NOTICE BUILD-INFO.txt > SHA256SUMS.txt
+            LICENSE NOTICE THIRD_PARTY_NOTICES.txt BUILD-INFO.txt > SHA256SUMS.txt
           sha256sum --check SHA256SUMS.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
