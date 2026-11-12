@@ -1,5 +1,43 @@
+use crate::infrastructure::profile_assignment;
 use std::path::Path;
 use tauri::{ipc::Channel, State};
+
+#[tauri::command]
+pub(crate) async fn preview_profile_assignment(
+    foundation: State<'_, Foundation>,
+    id: i64,
+    repository: bool,
+) -> Result<profile_assignment::AssignmentPreview, config_apply::ApplyError> {
+    let pool = foundation
+        .database()
+        .map_err(|_| config_apply::ApplyError::StorageUnavailable)?;
+    let app = foundation
+        .directory
+        .as_deref()
+        .ok_or(config_apply::ApplyError::StorageUnavailable)?;
+    profile_assignment::prepare(pool, app, id, repository).await
+}
+
+#[tauri::command]
+pub(crate) async fn confirm_profile_assignment(
+    foundation: State<'_, Foundation>,
+    id: i64,
+    repository: bool,
+    confirmation: String,
+) -> Result<(), config_apply::ApplyError> {
+    let _guard = foundation
+        .inventory_scan
+        .try_lock()
+        .map_err(|_| config_apply::ApplyError::Busy)?;
+    let pool = foundation
+        .database()
+        .map_err(|_| config_apply::ApplyError::StorageUnavailable)?;
+    let app = foundation
+        .directory
+        .as_deref()
+        .ok_or(config_apply::ApplyError::StorageUnavailable)?;
+    profile_assignment::apply(pool, app, id, repository, &confirmation).await
+}
 
 use crate::{
     application::Foundation,

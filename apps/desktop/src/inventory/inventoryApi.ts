@@ -55,7 +55,7 @@ export type NativeOperation = {
   id: number;
   local: boolean;
   hook: boolean;
-  state: "applied" | "recovery_required";
+  state: "applied" | "superseded" | "recovery_required";
   target: string;
   confirmation: string | null;
 };
@@ -65,6 +65,11 @@ export type LocalPreview = {
   append: string;
   name: string;
   email: string;
+};
+export type AssignmentPreview = {
+  confirmation: string | null;
+  global: NativePreview;
+  repositories: { id: number; path: string; preview: LocalPreview }[];
 };
 export type ActivityItem = {
   id: number;
@@ -131,6 +136,14 @@ export type ScanSettings = {
 };
 
 export const inventoryApi = {
+  previewAssignment: (id: number, repository: boolean) =>
+    invoke<AssignmentPreview>("preview_profile_assignment", { id, repository }),
+  confirmAssignment: (id: number, repository: boolean, confirmation: string) =>
+    invoke<void>("confirm_profile_assignment", {
+      id,
+      repository,
+      confirmation,
+    }),
   directories: () => invoke<Directory[]>("list_directories"),
   contents: (id: number) => invoke<Contents>("list_directory_contents", { id }),
   inspect: (id: number) => invoke<InspectorData>("inspect_repository", { id }),
@@ -222,7 +235,9 @@ export function inventoryError(error: unknown) {
     case "active_operation":
       return "Ya hay una aplicación activa para este destino. Puedes revisarla y restaurarla desde Actividad.";
     case "identity_required":
-      return "Asigna un perfil al repositorio antes de preparar el hook.";
+      return "Asigna un perfil o un predeterminado antes de preparar la aplicación.";
+    case "key_unavailable":
+      return "No se encontró un archivo de clave del perfil. Edita la identidad y vuelve a seleccionarlo antes de aplicar.";
     case "unsafe_target":
       return "GitPilot no pudo comprobar el destino de forma segura.";
     case "backup_unavailable":

@@ -1,5 +1,16 @@
 # Pruebas y validación
 
+## Evidencia de aislamiento de perfiles
+
+Validación del 12 de noviembre de 2026 en Windows, Git 2.55.0.windows.5:
+
+- La integración usa un subproceso con HOME/USERPROFILE/XDG temporales, Git de sistema desactivado, SQLite y repositorios temporales. Comprueba sustitución de autor global y de un include local compartido, cambio de un perfil con claves a otro sin claves con el mismo autor, firma opcional y limpieza de la clave anterior, rechazo de archivos ausentes y de confirmaciones vencidas. OpenSSH `-G` comprueba los archivos y métodos configurados sin abrir conexiones. Un commit externo confirma autor y committer; un repositorio futuro hereda el perfil actualizado. La restauración recupera los bytes originales y conserva el include compartido.
+- Se comprueban reaplicaciones, orden de restauración, estado de operaciones anteriores y recuperación de una publicación interrumpida. Las rutas de clave incluyen espacios, comillas y metacaracteres de shell y de OpenSSH.
+- La revisión visual con IPC ficticio cubre 900 × 600 y reflujo a 390 px, selección/cancelación de claves, firma opcional, foco de la revisión y aplicación. En WebView2, una instancia con identificador de prueba separado abrió los diálogos nativos de archivos y carpetas y devolvió las rutas sintéticas correctas a los campos de solo lectura.
+- Pasaron la compilación frontend, ESLint, TypeScript, cuatro pruebas Vitest, Clippy con avisos como errores y la suite Rust (40 aprobadas y cinco ignoradas por sus requisitos explícitos). Se compiló el ejecutable Tauri de depuración con `custom-protocol`.
+
+Límites: la integración de escritura y los selectores nativos se verificaron en Windows; esta entrega no acredita Linux, acceso remoto ni firmas criptográficas reales. La asignación modifica repositorios ordinarios conocidos y publica reglas para futuros. Repositorios fuera del inventario con valores locales propios, worktrees vinculados y variables/opciones externas requieren su diagnóstico. Una asignación de varios archivos es recuperable por archivo; si un paso posterior falla, los anteriores permanecen visibles en Actividad. HTTPS conserva sus credenciales externas; los alias y saltos de archivos SSH quedan fuera del comando aislado del perfil.
+
 ## Capas de prueba
 
 | Nivel | Herramienta y objetivo |

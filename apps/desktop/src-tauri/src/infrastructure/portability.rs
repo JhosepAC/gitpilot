@@ -254,6 +254,10 @@ fn decode(contents: &str) -> Result<Archive, PortableError> {
             label: profile.label.clone(),
             git_name: profile.git_name.clone(),
             email: profile.email.clone(),
+            signing_key: None,
+            signing_format: None,
+            ssh_key: None,
+            signing_required: false,
         }
         .validate()
         .map_err(|_| PortableError::InvalidFile)?;

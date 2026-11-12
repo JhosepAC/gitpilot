@@ -91,13 +91,6 @@ pub(crate) struct LocalPreview {
     repository: Repository,
 }
 
-fn direct_local(value: &ConfigValue, target: &Path) -> bool {
-    value.scope == "local"
-        && value.origin.strip_prefix("file:").is_some_and(|origin| {
-            origin == ".git/config" || origin == r".git\config" || Path::new(origin) == target
-        })
-}
-
 fn commit_identity_is(observed: &ObservedIdentity, name: &str, email: &str) -> bool {
     let identity = format!("{name} <{email}>");
     observed.author.as_ref() == Some(&identity) && observed.committer.as_ref() == Some(&identity)
@@ -125,6 +118,9 @@ pub(crate) async fn prepare(pool: &SqlitePool, id: i64) -> Result<LocalPreview, 
             "GIT_AUTHOR_EMAIL",
             "GIT_COMMITTER_NAME",
             "GIT_COMMITTER_EMAIL",
+            "GIT_SSH_COMMAND",
+            "GIT_SSH",
+            "GIT_SSH_VARIANT",
         ]
         .iter()
         .any(|name| std::env::var_os(name).is_some())
@@ -159,35 +155,23 @@ pub(crate) async fn prepare(pool: &SqlitePool, id: i64) -> Result<LocalPreview, 
     let diagnosis = diagnose(pool, &repo)
         .await
         .map_err(|_| ApplyError::StalePreview)?;
-    let (Some(expected), Some(observed), Some(fingerprint)) = (
-        diagnosis.expected,
-        diagnosis.observed,
-        diagnosis.conflict_fingerprint,
-    ) else {
+    let (Some(expected), Some(observed)) = (diagnosis.expected, diagnosis.observed) else {
         return Err(ApplyError::StalePreview);
     };
-    let (Some(name), Some(email)) = (&observed.name, &observed.email) else {
-        return Err(ApplyError::UnsafeTarget);
-    };
-    let fields = [
-        (name, "name", &expected.git_name),
-        (email, "email", &expected.email),
-    ];
-    if !commit_identity_is(&observed, &name.value, &email.value)
-        || fields
-            .iter()
-            .any(|(field, _, expected)| field.value != **expected && !direct_local(field, &target))
-    {
-        return Err(ApplyError::UnsafeTarget);
-    }
-    let mut append = String::from("[user]\n");
-    for (field, key, value) in fields {
-        if field.value != *value {
-            append.push_str(&format!("\t{key} = {}\n", config_preview::quote(value)));
-        }
-    }
-    let record = serde_json::to_vec(&(&target, parent, &snapshot.stamp, fingerprint, &append))
-        .map_err(|_| ApplyError::StorageUnavailable)?;
+    let profile = config_preview::expected_profile(pool, &repo)
+        .await
+        .map_err(|_| ApplyError::IdentityRequired)?;
+    profile.check_key_files().await?;
+    let append = config_preview::profile_config(&profile);
+    let record = serde_json::to_vec(&(
+        &target,
+        parent,
+        &snapshot.stamp,
+        observed,
+        &profile,
+        &append,
+    ))
+    .map_err(|_| ApplyError::StorageUnavailable)?;
     Ok(LocalPreview {
         target: target.to_str().ok_or(ApplyError::UnsafeTarget)?.into(),
         confirmation: hex::encode(native_file::digest(&record)),
@@ -223,34 +207,59 @@ impl LocalPreview {
         {
             return Err(ApplyError::VerificationFailed);
         }
+        verify_settings(&exe, Path::new(&self.repository.path), &self.append).await?;
         Ok(())
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn local_scope_does_not_authorize_editing_an_included_file() {
-        let target = Path::new("repo").join(".git").join("config");
-        let record = |scope: &str, origin: &str| ConfigValue {
-            value: "fixture@example.test".into(),
-            scope: scope.into(),
-            origin: origin.into(),
-        };
-        assert!(direct_local(&record("local", "file:.git/config"), &target));
-        assert!(!direct_local(
-            &record("local", "file:../shared.config"),
-            &target
-        ));
-        assert!(!direct_local(
-            &record("global", "file:.git/config"),
-            &target
-        ));
-        assert!(!direct_local(
-            &record("worktree", "file:.git/config.worktree"),
-            &target
-        ));
+pub(super) async fn verify_settings(
+    exe: &Path,
+    cwd: &Path,
+    config: &str,
+) -> Result<(), ApplyError> {
+    let temp = tempfile::NamedTempFile::new().map_err(|_| ApplyError::VerificationFailed)?;
+    std::fs::write(temp.path(), config).map_err(|_| ApplyError::VerificationFailed)?;
+    let mut proposed = git::command(exe, cwd);
+    let (status, bytes) = git::output(
+        proposed
+            .args(["config", "--null", "--file"])
+            .arg(temp.path())
+            .arg("--list"),
+        std::time::Duration::from_secs(3),
+    )
+    .await
+    .map_err(|_| ApplyError::VerificationFailed)?;
+    if !status.success() {
+        return Err(ApplyError::VerificationFailed);
     }
+    let settings =
+        |bytes: Vec<u8>| -> Result<std::collections::BTreeMap<String, String>, ApplyError> {
+            String::from_utf8(bytes)
+                .map_err(|_| ApplyError::VerificationFailed)?
+                .split_terminator('\0')
+                .map(|line| {
+                    let (key, value) = line.split_once('\n').unwrap_or((line, ""));
+                    Ok((key.to_owned(), value.to_owned()))
+                })
+                .collect()
+        };
+    let expected = settings(bytes)?;
+    let mut actual = git::command(exe, cwd);
+    let (status, bytes) = git::output(
+        actual.args(["config", "--null", "--includes", "--list"]),
+        std::time::Duration::from_secs(3),
+    )
+    .await
+    .map_err(|_| ApplyError::VerificationFailed)?;
+    if !status.success() {
+        return Err(ApplyError::VerificationFailed);
+    }
+    let actual = settings(bytes)?;
+    if expected
+        .iter()
+        .any(|(key, value)| actual.get(key) != Some(value))
+    {
+        return Err(ApplyError::VerificationFailed);
+    }
+    Ok(())
 }

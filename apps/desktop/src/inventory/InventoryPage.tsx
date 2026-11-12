@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Brand } from "../app/Brand";
+import { PathPicker } from "../app/PathPicker";
 import { useLanguage } from "../app/language";
 import { WorkspaceNav } from "../app/WorkspaceNav";
 import type { Workspace } from "../app/WorkspaceNav";
-import { ConfigPreview, NativeOperationPanel } from "./ConfigPreview";
+import {
+  ConfigPreview,
+  NativeOperationPanel,
+  configFindings,
+} from "./ConfigPreview";
 import { RepositoryDiagnosis } from "./RepositoryDiagnosis";
 import { RepositoryInspector } from "./RepositoryInspector";
 import { ScanPreferencesPanel } from "./ScanPreferencesPanel";
@@ -17,6 +22,7 @@ import {
 } from "./inventoryApi";
 import type {
   Directory,
+  AssignmentPreview,
   LocalPreview,
   NativeOperation,
   NativePreview,
@@ -95,6 +101,11 @@ export function InventoryPage({
   >(null);
   const [activeScan, setActiveScan] = useState<ScanRun>();
   const [preview, setPreview] = useState<NativePreview>();
+  const [assignment, setAssignment] = useState<{
+    id: number;
+    repository: boolean;
+    plan: AssignmentPreview;
+  }>();
   const [nativeOperation, setNativeOperation] = useState<NativeOperation>();
   const [localPreview, setLocalPreview] = useState<LocalPreview>();
   const [inspector, setInspector] = useState<InspectorData>();
@@ -102,6 +113,7 @@ export function InventoryPage({
   const panel = useRef<HTMLElement>(null);
   const pathInput = useRef<HTMLInputElement>(null);
   const localReviewTitle = useRef<HTMLHeadingElement>(null);
+  const assignmentTitle = useRef<HTMLHeadingElement>(null);
   const localReviewButton = useRef<HTMLButtonElement>(null);
   const previewButton = useRef<HTMLButtonElement>(null);
   const inspectorButton = useRef<HTMLButtonElement>(null);
@@ -113,7 +125,7 @@ export function InventoryPage({
   const directory = view?.directory;
   const repository = view?.repository;
   const configOpen = Boolean(
-    preview || nativeOperation || localPreview || inspector,
+    preview || nativeOperation || localPreview || inspector || assignment,
   );
   const locked = Boolean(busy || mode || configOpen || activeScan);
   const canCancelScan =
@@ -146,6 +158,9 @@ export function InventoryPage({
   useEffect(() => {
     if (localPreview) localReviewTitle.current?.focus({ preventScroll: true });
   }, [localPreview]);
+  useEffect(() => {
+    if (assignment) assignmentTitle.current?.focus({ preventScroll: true });
+  }, [assignment]);
 
   useEffect(() => {
     if (canCancelScan) cancelScanButton.current?.focus({ preventScroll: true });
@@ -313,42 +328,71 @@ export function InventoryPage({
   }
 
   function assign(target: Directory | Repository, value: string) {
-    void run("Guardando asignación…", async () => {
+    void run("Preparando asignación…", async () => {
       await inventoryApi.assign(
         target,
         "kind" in target,
         value ? Number(value) : null,
       );
       await refresh(directory?.id, repository?.id);
-      setNotice("Asignación guardada en GitPilot.");
+      setNotice(
+        "Regla guardada. Revisa y confirma los cambios para aplicarla a Git.",
+      );
+      const isRepository = "kind" in target;
+      setAssignment({
+        id: target.id,
+        repository: isRepository,
+        plan: await inventoryApi.previewAssignment(target.id, isRepository),
+      });
     });
   }
 
   function identitySelect(target: Directory | Repository, label: string) {
     return (
-      <label className="field inventory-select">
-        {label}
-        <select
-          value={target.identityId ?? ""}
+      <div className="inventory-select">
+        <label className="field">
+          {label}
+          <select
+            value={target.identityId ?? ""}
+            disabled={locked}
+            onChange={(event) => assign(target, event.currentTarget.value)}
+          >
+            <option value="">Heredar identidad</option>
+            {view?.profiles.map((profile) => (
+              <option
+                key={profile.id}
+                value={profile.id}
+                disabled={
+                  "present" in target &&
+                  !target.present &&
+                  target.identityId !== profile.id
+                }
+              >
+                {profile.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="button"
           disabled={locked}
-          onChange={(event) => assign(target, event.currentTarget.value)}
+          onClick={() =>
+            void run("Preparando asignación…", async () => {
+              const isRepository = "kind" in target;
+              setAssignment({
+                id: target.id,
+                repository: isRepository,
+                plan: await inventoryApi.previewAssignment(
+                  target.id,
+                  isRepository,
+                ),
+              });
+            })
+          }
         >
-          <option value="">Heredar identidad</option>
-          {view?.profiles.map((profile) => (
-            <option
-              key={profile.id}
-              value={profile.id}
-              disabled={
-                "present" in target &&
-                !target.present &&
-                target.identityId !== profile.id
-              }
-            >
-              {profile.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          Revisar aplicación del perfil
+        </button>
+      </div>
     );
   }
 
@@ -517,6 +561,101 @@ export function InventoryPage({
             onBack={closeConfig}
             onRestore={(confirmation) => confirmConfig(confirmation, true)}
           />
+        ) : assignment ? (
+          <>
+            <h2 ref={assignmentTitle} tabIndex={-1}>
+              Aplicar perfil a Git
+            </h2>
+            <p className="panel-intro">
+              El perfil sustituirá el autor, la autenticación SSH y la firma en
+              los archivos siguientes. Cada archivo tendrá respaldo y podrás
+              restaurarlo desde Actividad.
+            </p>
+            <p className="field-help">
+              Sin clave de autenticación, SSH quedará bloqueado. Las variables
+              de entorno y las opciones de Git de otras terminales pueden tener
+              prioridad.
+            </p>
+            {assignment.plan.repositories.map(({ id, path, preview }) => (
+              <details key={id} className="inventory-disclosure">
+                <summary>
+                  {path} · {preview.name} &lt;{preview.email}&gt;
+                </summary>
+                <p className="code-value">{preview.target}</p>
+                <pre className="preview-diff">{preview.append}</pre>
+              </details>
+            ))}
+            <details className="inventory-disclosure">
+              <summary>
+                Reglas para repositorios futuros · configuración global
+              </summary>
+              <p className="code-value">{assignment.plan.global.globalPath}</p>
+              <pre className="preview-diff">
+                {assignment.plan.global.globalAppend}
+              </pre>
+            </details>
+            {assignment.plan.global.findings.length > 0 && (
+              <ul className="preview-findings">
+                {assignment.plan.global.findings.map(
+                  ({ code, path }, index) => (
+                    <li key={index}>
+                      {configFindings[code] ??
+                        "La configuración requiere revisión."}
+                      {path && <p className="code-value">{path}</p>}
+                    </li>
+                  ),
+                )}
+              </ul>
+            )}
+            {!assignment.plan.confirmation && (
+              <p role="alert">
+                La regla está guardada, pero la configuración requiere revisión.
+                Abre la vista previa de Git para consultar los límites
+                detectados.
+              </p>
+            )}
+            <div className="action-row">
+              <button
+                className="button primary"
+                disabled={Boolean(busy) || !assignment.plan.confirmation}
+                onClick={() =>
+                  void run("Aplicando y verificando perfil…", async () => {
+                    try {
+                      await inventoryApi.confirmAssignment(
+                        assignment.id,
+                        assignment.repository,
+                        assignment.plan.confirmation!,
+                      );
+                      setAssignment(undefined);
+                      setNotice(
+                        "Configuración del perfil aplicada y verificada con Git.",
+                      );
+                    } catch (problem) {
+                      setAssignment(undefined);
+                      setNotice(
+                        "La aplicación no se completó. Revisa el diagnóstico y las operaciones verificadas en Actividad antes de reintentar.",
+                      );
+                      throw problem;
+                    } finally {
+                      await refresh(directory?.id, repository?.id);
+                    }
+                  })
+                }
+              >
+                Aplicar perfil
+              </button>
+              <button
+                className="button"
+                disabled={Boolean(busy)}
+                onClick={() => {
+                  setAssignment(undefined);
+                  requestAnimationFrame(() => panel.current?.focus());
+                }}
+              >
+                Volver al inventario
+              </button>
+            </div>
+          </>
         ) : preview ? (
           <ConfigPreview
             preview={preview}
@@ -542,20 +681,19 @@ export function InventoryPage({
                 : "La subcarpeta y sus descendientes se omitirán en el siguiente escaneo de este directorio."}
             </p>
             <form className="identity-form" onSubmit={savePath}>
-              <label className="field">
-                Ruta absoluta
-                <input
-                  ref={pathInput}
-                  value={path}
-                  onChange={(event) => setPath(event.currentTarget.value)}
-                  placeholder={mode === "exclude" ? directory?.path : undefined}
-                  required
-                  disabled={Boolean(busy)}
-                  spellCheck={false}
-                />
-              </label>
+              <PathPicker
+                label="Directorio"
+                inputRef={pathInput}
+                value={path}
+                onChange={setPath}
+                directory
+                disabled={Boolean(busy)}
+              />
               <div className="action-row">
-                <button className="button primary" disabled={Boolean(busy)}>
+                <button
+                  className="button primary"
+                  disabled={Boolean(busy) || !path}
+                >
                   {mode === "add" ? "Registrar" : "Excluir"}
                 </button>
                 <button
@@ -754,8 +892,8 @@ export function InventoryPage({
             )}
             {identitySelect(directory, "Identidad del directorio")}
             <p className="inventory-meta">
-              Esta regla se guarda en GitPilot para calcular la identidad
-              esperada.
+              La regla define el perfil esperado. Revisa su aplicación para
+              actualizar también los archivos de Git.
             </p>
             <div className="inventory-section">
               <h3>

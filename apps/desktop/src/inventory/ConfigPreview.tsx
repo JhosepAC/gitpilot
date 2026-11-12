@@ -8,7 +8,9 @@ const priorities = {
   repository: "Excepción del repositorio",
 };
 
-const findings: Record<string, string> = {
+export const configFindings: Record<string, string> = {
+  key_unavailable:
+    "No se encontró un archivo de clave. Edita el perfil y vuelve a seleccionarlo.",
   unsupported_git: "La simulación requiere Git 2.39.5 o posterior.",
   redirected_config:
     "El entorno redirige la configuración o el repositorio de Git. Abre GitPilot en un entorno Git normal para simular.",
@@ -25,7 +27,7 @@ const findings: Record<string, string> = {
     "Git no pudo comprobar este repositorio. Revisa su configuración y vuelve a escanear.",
   unverified_worktree: "Git no pudo comprobar todos los worktrees vinculados.",
   managed_config_present:
-    "Ya hay una referencia administrada en el archivo global.",
+    "La referencia administrada no coincide con una operación verificada. Revisa Actividad antes de aplicar.",
   unsafe_global:
     "El archivo global o su carpeta requieren revisión antes de aplicar.",
 };
@@ -153,7 +155,7 @@ export function ConfigPreview({
           <ul className="preview-findings">
             {preview.findings.map(({ code, path }) => (
               <li key={code + path}>
-                {findings[code] ?? "La simulación requiere revisión."}
+                {configFindings[code] ?? "La simulación requiere revisión."}
                 {path && <div className="inventory-meta">{path}</div>}
               </li>
             ))}
@@ -240,6 +242,7 @@ export function NativeOperationPanel({
   const title = useRef<HTMLHeadingElement>(null);
   useEffect(() => title.current?.focus({ preventScroll: true }), []);
   const pending = operation.state === "recovery_required";
+  const superseded = operation.state === "superseded";
   return (
     <>
       <button
@@ -250,12 +253,18 @@ export function NativeOperationPanel({
         {backLabel}
       </button>
       <h2 className="preview-title" ref={title} tabIndex={-1}>
-        {pending ? "Recuperación pendiente" : "Configuración verificada"}
+        {superseded
+          ? "Aplicación anterior"
+          : pending
+            ? "Recuperación pendiente"
+            : "Configuración verificada"}
       </h2>
       <p className="panel-intro">
-        {pending
-          ? "GitPilot conservó el registro y el respaldo. Revisa el archivo y libera cualquier bloqueo de Git. Puedes reabrir GitPilot para reintentar una operación interrumpida."
-          : "La restauración devuelve el archivo a su estado anterior a esta operación."}
+        {superseded
+          ? "Hay una aplicación posterior en este archivo. Restaura primero la más reciente desde Actividad para volver a este paso."
+          : pending
+            ? "GitPilot conservó el registro y el respaldo. Revisa el archivo y libera cualquier bloqueo de Git. Puedes reabrir GitPilot para reintentar una operación interrumpida."
+            : "La restauración devuelve el archivo a su estado anterior a esta operación."}
       </p>
       <div className="commit-author preview-destinations">
         <h3>

@@ -79,6 +79,10 @@ async fn measure(root: &Path) {
             label: "Beta profile".into(),
             git_name: "Expected Fixture".into(),
             email: "expected@example.test".into(),
+            signing_key: None,
+            signing_format: None,
+            ssh_key: None,
+            signing_required: false,
         },
     )
     .await

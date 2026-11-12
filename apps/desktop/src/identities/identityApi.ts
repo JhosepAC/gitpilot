@@ -4,6 +4,10 @@ export type IdentityInput = {
   label: string;
   gitName: string;
   email: string;
+  signingKey?: string | null;
+  signingFormat?: "ssh" | "openpgp" | null;
+  sshKey?: string | null;
+  signingRequired?: boolean;
 };
 
 export type Identity = IdentityInput & {
@@ -40,6 +44,10 @@ export function identityError(error: unknown): string {
       return "Introduce un nombre de Git de hasta 120 caracteres sin signos < ni >.";
     case "invalid_email":
       return "Introduce un correo de Git válido, sin espacios y de hasta 254 caracteres.";
+    case "invalid_signing_key":
+      return "Introduce una clave de firma válida de hasta 500 caracteres sin caracteres de control.";
+    case "invalid_ssh_key":
+      return "Introduce una ruta de clave SSH válida de hasta 500 caracteres sin caracteres de control.";
     case "conflict":
       return "Esta identidad cambió. Cancela la edición y actualiza la lista.";
     case "in_use":

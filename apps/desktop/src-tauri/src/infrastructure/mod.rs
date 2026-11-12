@@ -21,5 +21,6 @@ pub(crate) mod inventory_scan;
 mod native_file;
 pub(crate) mod portability;
 pub(crate) mod pre_commit;
+pub(crate) mod profile_assignment;
 pub(crate) mod scan_preferences;
 pub(crate) mod storage;

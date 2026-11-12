@@ -114,11 +114,18 @@ export function IdentitiesPage({
     const profile = pane.profile;
     change(
       async () => {
-        if (!profile) return identityApi.create(input);
-        await identityApi.update(profile, input);
-        return profile.id;
+        let savedId: number;
+        if (!profile) {
+          savedId = await identityApi.create(input);
+        } else {
+          await identityApi.update(profile, input);
+          savedId = profile.id;
+        }
+        return savedId;
       },
-      profile ? "Cambios guardados." : "Identidad creada.",
+      profile
+        ? "Cambios guardados. Reaplica el perfil desde Directorios para actualizar Git."
+        : "Identidad creada.",
     );
   }
 
@@ -296,6 +303,37 @@ export function IdentitiesPage({
                 </div>
               </dl>
             </div>
+            <div className="commit-author ssh-auth-card">
+              <h3>Autenticación remota (SSH)</h3>
+              <dl className="identity-values">
+                <div>
+                  <dt>Clave SSH para push / fetch</dt>
+                  <dd className={active.sshKey ? "code-value" : undefined}>
+                    {active.sshKey ||
+                      "Sin clave · SSH bloqueado al aplicar el perfil"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            <div className="commit-author signing-card">
+              <h3>Firma de commits</h3>
+              <dl className="identity-values">
+                <div>
+                  <dt>Estado de firma</dt>
+                  <dd>
+                    {active.signingKey
+                      ? `${active.signingRequired ? "Obligatoria" : "Opcional"} · ${active.signingFormat === "openpgp" ? "OpenPGP (GPG)" : "SSH (ssh-keygen)"}`
+                      : "Desactivada"}
+                  </dd>
+                </div>
+                {active.signingKey && (
+                  <div>
+                    <dt>Clave pública / ID</dt>
+                    <dd className="code-value">{active.signingKey}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
             <div className="identity-usage">
               <div>
                 <h3>Uso en GitPilot</h3>
@@ -322,7 +360,7 @@ export function IdentitiesPage({
                     },
                     active.isDefault
                       ? "Preferencia predeterminada retirada."
-                      : "Identidad predeterminada actualizada.",
+                      : "Predeterminado guardado. Revisa y aplica la configuración desde Directorios.",
                   )
                 }
               >

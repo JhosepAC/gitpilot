@@ -330,6 +330,10 @@ mod tests {
                             label: label.into(),
                             git_name: "Fixture".into(),
                             email: "fixture@example.test".into(),
+                            signing_key: None,
+                            signing_format: None,
+                            ssh_key: None,
+                            signing_required: false,
                         },
                     )
                     .await
