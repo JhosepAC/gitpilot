@@ -461,3 +461,58 @@
     transform: none;
   }
 }
+
+.identity-assignments {
+  border-block: 1px solid var(--line);
+  padding-block: 0.75rem;
+}
+
+.identity-assignments summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding-block: 0.25rem;
+}
+
+.identity-assignments summary span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.assignment-content {
+  padding-block-start: 0.75rem;
+}
+
+.assignment-content p {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  margin-block-end: 0.75rem;
+}
+
+.assignment-list {
+  list-style: none;
+  padding: 0;
+  margin-block: 0 1rem;
+}
+
+.assignment-list li {
+  padding-block: 0.625rem;
+  border-block-end: 1px solid var(--line);
+}
+
+.assignment-kind,
+.assignment-path {
+  display: block;
+}
+
+.assignment-kind {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-block-end: 0.25rem;
+}
+
+.assignment-path {
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}

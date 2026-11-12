@@ -6,6 +6,7 @@ import type { Workspace } from "../app/WorkspaceNav";
 import { IdentityEditor } from "./IdentityEditor";
 import { identityApi, identityError } from "./identityApi";
 import type { Identity, IdentityInput } from "./identityApi";
+import { IdentityAssignments } from "./IdentityAssignments";
 import "./identities.css";
 
 type Pane =
@@ -369,6 +370,11 @@ export function IdentitiesPage({
                   : "Usar como predeterminada"}
               </button>
             </div>
+            <IdentityAssignments
+              key={active.id}
+              identity={active}
+              onNavigate={onNavigate}
+            />
             <div className="action-row detail-actions">
               <button
                 className="button"
