@@ -585,6 +585,56 @@ pub(super) fn sync_parent(path: &Path) -> io::Result<()> {
 mod tests {
     use super::*;
 
+    fn security_description(path: &Path) -> String {
+        use std::{os::windows::io::AsRawHandle, ptr::null_mut};
+        use windows_sys::Win32::{
+            Foundation::LocalFree,
+            Security::{
+                Authorization::{
+                    ConvertSecurityDescriptorToStringSecurityDescriptorW, GetSecurityInfo,
+                    SE_FILE_OBJECT,
+                },
+                DACL_SECURITY_INFORMATION, GROUP_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION,
+            },
+        };
+        let file = options().read(true).open(path).unwrap();
+        let information =
+            OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION;
+        let mut descriptor = null_mut();
+        assert_eq!(
+            unsafe {
+                GetSecurityInfo(
+                    file.as_raw_handle(),
+                    SE_FILE_OBJECT,
+                    information,
+                    null_mut(),
+                    null_mut(),
+                    null_mut(),
+                    null_mut(),
+                    &mut descriptor,
+                )
+            },
+            0
+        );
+        let mut text = null_mut();
+        let mut length = 0;
+        let result = unsafe {
+            ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                descriptor,
+                1,
+                information,
+                &mut text,
+                &mut length,
+            )
+        };
+        unsafe { LocalFree(descriptor) };
+        assert_ne!(result, 0);
+        let description =
+            String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(text, length as usize) });
+        unsafe { LocalFree(text.cast()) };
+        description
+    }
+
     #[test]
     fn replacement_preserves_explicit_windows_security_group() {
         use windows_sys::Win32::{
@@ -621,6 +671,7 @@ mod tests {
         unsafe { LocalFree(descriptor) };
         assert_ne!(changed, 0, "{error}");
         let before = snapshot(&target).unwrap().unwrap().stamp;
+        let description = security_description(&target);
         let mut stage = Stage::create(directory.path().join("stage"), Some(&before)).unwrap();
         stage.write(b"changed", Some(&before)).unwrap();
         replace(&stage.path, &target, true).unwrap();
@@ -628,7 +679,8 @@ mod tests {
         assert_eq!(after.bytes, b"changed");
         assert!(
             before.same_permissions(&after.stamp),
-            "Windows ownership/group/ACL changed"
+            "Windows ownership/group/ACL changed: before={description:?}; after={:?}",
+            security_description(&target)
         );
     }
 }
