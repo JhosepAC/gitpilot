@@ -87,6 +87,8 @@ pub fn run() -> tauri::Result<()> {
             repository_commands::setup_status,
             repository_commands::keep_repository_identity,
             repository_commands::preview_local_identity,
+            repository_commands::preview_profile_assignment,
+            repository_commands::confirm_profile_assignment,
             portability_commands::read_language,
             portability_commands::save_language,
             portability_commands::preview_portable_settings,

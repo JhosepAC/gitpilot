@@ -7,6 +7,7 @@ export type IdentityInput = {
   signingKey?: string | null;
   signingFormat?: "ssh" | "openpgp" | null;
   sshKey?: string | null;
+  signingRequired?: boolean;
 };
 
 export type Identity = IdentityInput & {

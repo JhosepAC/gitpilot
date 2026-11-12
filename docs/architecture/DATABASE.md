@@ -47,6 +47,8 @@ La migración `202611070004_portable_activity.sql` añade un registro local con 
 
 ## Extensiones posteriores
 
+La migración `202611120001_profile_isolation.sql` añade `identities.signing_required`, conserva la firma obligatoria de perfiles existentes con clave y la desactiva para perfiles sin clave. Las aplicaciones sucesivas se conservan como operaciones `applied` por archivo; un índice parcial mantiene una sola escritura o restauración pendiente por destino. El bloqueo de aplicación y las huellas verifican el extremo de la pila. Al restaurar, una transacción actualiza la huella de la operación anterior y cierra la operación restaurada.
+
 | Tabla o relación | Uso |
 | --- | --- |
 | `signing_keys` | Referencias públicas o selectores de firma. La clave privada sigue bajo la herramienta externa. |

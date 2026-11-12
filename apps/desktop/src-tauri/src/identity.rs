@@ -12,6 +12,12 @@ pub(crate) struct IdentityInput {
     pub(crate) signing_format: Option<String>,
     #[serde(default)]
     pub(crate) ssh_key: Option<String>,
+    #[serde(default = "default_signing_required")]
+    pub(crate) signing_required: bool,
+}
+
+fn default_signing_required() -> bool {
+    true
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -27,6 +33,7 @@ pub(crate) struct Identity {
     pub(crate) signing_key: Option<String>,
     pub(crate) signing_format: Option<String>,
     pub(crate) ssh_key: Option<String>,
+    pub(crate) signing_required: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -102,6 +109,7 @@ impl IdentityInput {
             _ => None,
         };
 
+        let signing_required = self.signing_required && signing_key.is_some();
         Ok(Self {
             label,
             git_name,
@@ -109,6 +117,7 @@ impl IdentityInput {
             signing_key,
             signing_format,
             ssh_key,
+            signing_required,
         })
     }
 }

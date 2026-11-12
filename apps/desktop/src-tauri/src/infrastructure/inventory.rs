@@ -333,6 +333,7 @@ mod tests {
                             signing_key: None,
                             signing_format: None,
                             ssh_key: None,
+                            signing_required: false,
                         },
                     )
                     .await

@@ -23,6 +23,7 @@ pub(crate) enum ApplyError {
     BackupUnavailable,
     ActiveOperation,
     IdentityRequired,
+    KeyUnavailable,
     VerificationFailed,
     RecoveryRequired,
     StorageUnavailable,
@@ -54,12 +55,12 @@ struct Operation {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct OperationStatus {
-    id: i64,
+    pub(super) id: i64,
     local: bool,
     hook: bool,
     state: String,
     target: String,
-    confirmation: Option<String>,
+    pub(super) confirmation: Option<String>,
 }
 
 const OPERATION: &str =
@@ -74,7 +75,8 @@ async fn live(
 ) -> Result<Option<Operation>, ApplyError> {
     Ok(sqlx::query_as(&format!(
         "{OPERATION} WHERE state IN ('preparing', 'applied', 'restoring')
-            AND ((? IS NULL AND repository_id IS ? AND is_hook = ?) OR rowid = ?)"
+            AND ((? IS NULL AND repository_id IS ? AND is_hook = ?) OR rowid = ?)
+            ORDER BY rowid DESC LIMIT 1"
     ))
     .bind(operation)
     .bind(repository)
@@ -180,16 +182,44 @@ impl Operation {
 }
 
 async fn set_state(pool: &SqlitePool, token: &str, state: &str) -> Result<(), ApplyError> {
+    let mut tx = pool.begin().await?;
+    if matches!(state, "restored" | "rolled_back") {
+        let current: Operation = sqlx::query_as(&format!("{OPERATION} WHERE token = ?"))
+            .bind(token)
+            .fetch_one(&mut *tx)
+            .await?;
+        let previous: Option<Operation> = sqlx::query_as(&format!("{OPERATION} WHERE target = ? AND state = 'applied' AND rowid < ? ORDER BY rowid DESC LIMIT 1")).bind(&current.target).bind(current.id).fetch_optional(&mut *tx).await?;
+        if let Some(previous) = previous {
+            let restored = snapshot(Path::new(&current.target), current.parent()?)?
+                .ok_or(ApplyError::RecoveryRequired)?;
+            let old: Stamp = serde_json::from_str(
+                previous
+                    .applied_stamp
+                    .as_deref()
+                    .ok_or(ApplyError::RecoveryRequired)?,
+            )
+            .map_err(|_| ApplyError::RecoveryRequired)?;
+            if old.digest != restored.stamp.digest || !old.same_permissions(&restored.stamp) {
+                return Err(ApplyError::RecoveryRequired);
+            }
+            sqlx::query("UPDATE config_operations SET applied_stamp = ? WHERE token = ?")
+                .bind(encoded(&restored.stamp)?)
+                .bind(previous.token)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
     let result = sqlx::query(
         "UPDATE config_operations SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE token = ?",
     )
     .bind(state)
     .bind(token)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
     if result.rows_affected() != 1 {
         return Err(ApplyError::StorageUnavailable);
     }
+    tx.commit().await?;
     Ok(())
 }
 
@@ -338,36 +368,43 @@ pub(crate) async fn status(
     pool: &SqlitePool,
     operation: Option<i64>,
 ) -> Result<Option<OperationStatus>, ApplyError> {
-    status_for(live(pool, None, operation, false).await?)
+    status_for(pool, live(pool, None, operation, false).await?).await
 }
 
 pub(crate) async fn hook_status(
     pool: &SqlitePool,
     repository: i64,
 ) -> Result<Option<OperationStatus>, ApplyError> {
-    status_for(live(pool, Some(repository), None, true).await?)
+    status_for(pool, live(pool, Some(repository), None, true).await?).await
 }
 
-fn status_for(operation: Option<Operation>) -> Result<Option<OperationStatus>, ApplyError> {
+async fn status_for(
+    pool: &SqlitePool,
+    operation: Option<Operation>,
+) -> Result<Option<OperationStatus>, ApplyError> {
     let Some(operation) = operation else {
         return Ok(None);
     };
+    let superseded: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM config_operations WHERE target = ? AND rowid > ? AND state IN ('preparing','applied','restoring'))").bind(&operation.target).bind(operation.id).fetch_one(pool).await?;
     let current = snapshot(Path::new(&operation.target), operation.parent()?)
         .ok()
         .flatten();
-    let confirmation = if operation.state == "applied" && operation.applied(current.as_ref()) {
-        current
-            .as_ref()
-            .map(|file| operation.restore_confirmation(&file.stamp))
-            .transpose()?
-    } else {
-        None
-    };
+    let confirmation =
+        if !superseded && operation.state == "applied" && operation.applied(current.as_ref()) {
+            current
+                .as_ref()
+                .map(|file| operation.restore_confirmation(&file.stamp))
+                .transpose()?
+        } else {
+            None
+        };
     Ok(Some(OperationStatus {
         id: operation.id,
         local: operation.repository_id.is_some(),
         hook: operation.is_hook,
-        state: if operation.state == "applied" && confirmation.is_some() {
+        state: if superseded {
+            "superseded".into()
+        } else if operation.state == "applied" && confirmation.is_some() {
             "applied".into()
         } else {
             "recovery_required".into()
@@ -473,11 +510,14 @@ pub(crate) async fn apply(
     if blocked {
         return Err(ApplyError::RecoveryRequired);
     }
-    if live(pool, repository, None, mode.is_some())
-        .await?
-        .is_some()
-    {
-        return Err(ApplyError::ActiveOperation);
+    if let Some(previous) = live(pool, repository, None, mode.is_some()).await? {
+        if mode.is_some() {
+            return Err(ApplyError::ActiveOperation);
+        }
+        let current = snapshot(Path::new(&previous.target), previous.parent()?)?;
+        if previous.state != "applied" || !previous.applied(current.as_ref()) {
+            return Err(ApplyError::RecoveryRequired);
+        }
     }
     let preview = Plan::prepare(pool, app, repository, mode).await?;
     if preview.confirmation() != Some(confirmation) {
@@ -608,6 +648,10 @@ pub(crate) async fn restore(
         .await?
         .ok_or(ApplyError::StalePreview)?;
     let target = Path::new(&operation.target);
+    let newer: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM config_operations WHERE target = ? AND rowid > ? AND state IN ('applied','preparing','restoring'))").bind(&operation.target).bind(operation.id).fetch_one(pool).await?;
+    if newer {
+        return Err(ApplyError::ActiveOperation);
+    }
     let current = snapshot(target, operation.parent()?)?;
     let Some(current) = current.filter(|file| operation.applied(Some(file))) else {
         return Err(ApplyError::RecoveryRequired);

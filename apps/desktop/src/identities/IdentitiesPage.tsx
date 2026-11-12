@@ -6,7 +6,6 @@ import type { Workspace } from "../app/WorkspaceNav";
 import { IdentityEditor } from "./IdentityEditor";
 import { identityApi, identityError } from "./identityApi";
 import type { Identity, IdentityInput } from "./identityApi";
-import { inventoryApi } from "../inventory/inventoryApi";
 import "./identities.css";
 
 type Pane =
@@ -122,18 +121,10 @@ export function IdentitiesPage({
           await identityApi.update(profile, input);
           savedId = profile.id;
         }
-        try {
-          const preview = await inventoryApi.preview();
-          if (preview.confirmation) {
-            await inventoryApi.confirmNative(preview.confirmation, false);
-          }
-        } catch {
-          // Si no hay configuración global activa, se guarda en GitPilot
-        }
         return savedId;
       },
       profile
-        ? "Cambios guardados y sincronizados con Git."
+        ? "Cambios guardados. Reaplica el perfil desde Directorios para actualizar Git."
         : "Identidad creada.",
     );
   }
@@ -317,9 +308,9 @@ export function IdentitiesPage({
               <dl className="identity-values">
                 <div>
                   <dt>Clave SSH para push / fetch</dt>
-                  <dd className="code-value">
+                  <dd className={active.sshKey ? "code-value" : undefined}>
                     {active.sshKey ||
-                      "Sin clave SSH específica (usa la clave global del sistema)"}
+                      "Sin clave · SSH bloqueado al aplicar el perfil"}
                   </dd>
                 </div>
               </dl>
@@ -331,7 +322,7 @@ export function IdentitiesPage({
                   <dt>Estado de firma</dt>
                   <dd>
                     {active.signingKey
-                      ? `Activa · ${active.signingFormat === "openpgp" ? "OpenPGP (GPG)" : "SSH (ssh-keygen)"}`
+                      ? `${active.signingRequired ? "Obligatoria" : "Opcional"} · ${active.signingFormat === "openpgp" ? "OpenPGP (GPG)" : "SSH (ssh-keygen)"}`
                       : "Desactivada"}
                   </dd>
                 </div>
@@ -365,22 +356,11 @@ export function IdentitiesPage({
                   change(
                     async () => {
                       await identityApi.setDefault(active, !active.isDefault);
-                      try {
-                        const preview = await inventoryApi.preview();
-                        if (preview.confirmation) {
-                          await inventoryApi.confirmNative(
-                            preview.confirmation,
-                            false,
-                          );
-                        }
-                      } catch {
-                        // Si no hay configuración global activa, se mantiene la preferencia en GitPilot
-                      }
                       return active.id;
                     },
                     active.isDefault
                       ? "Preferencia predeterminada retirada."
-                      : "Identidad predeterminada actualizada y sincronizada con Git.",
+                      : "Predeterminado guardado. Revisa y aplica la configuración desde Directorios.",
                   )
                 }
               >

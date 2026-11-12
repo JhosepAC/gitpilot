@@ -27,6 +27,23 @@
   background: var(--accent-hover);
 }
 
+.path-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+.path-picker input {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+  text-overflow: ellipsis;
+}
+
+.path-picker .button {
+  flex: 0 0 auto;
+}
+
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

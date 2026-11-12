@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import type { IdentityInput } from "./identityApi";
+import { PathPicker } from "../app/PathPicker";
 
 export function IdentityEditor({
   initial,
@@ -24,6 +25,7 @@ export function IdentityEditor({
     signingKey: initial.signingKey ?? "",
     signingFormat: initial.signingFormat ?? "ssh",
     sshKey: initial.sshKey ?? "",
+    signingRequired: initial.signingRequired ?? Boolean(initial.signingKey),
   });
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -38,6 +40,9 @@ export function IdentityEditor({
           ? (input.signingFormat ?? "ssh")
           : null,
         sshKey: input.sshKey?.trim() ? input.sshKey.trim() : null,
+        signingRequired: Boolean(
+          input.signingKey?.trim() && input.signingRequired,
+        ),
       });
     }
   }
@@ -107,19 +112,17 @@ export function IdentityEditor({
             repositorios de este perfil para que al hacer <code>git push</code>{" "}
             se use esta clave SSH y no la global.
           </p>
-          <label className="field">
-            Ruta a clave privada SSH
-            <input
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="p. ej. ~/.ssh/id_ed25519_trabajo o C:/Users/ana/.ssh/id_ed25519"
-              value={input.sshKey ?? ""}
-              onChange={(e) =>
-                setInput({ ...input, sshKey: e.currentTarget.value })
-              }
-              disabled={busy}
-            />
-          </label>
+          <PathPicker
+            label="Clave privada de autenticación SSH"
+            value={input.sshKey ?? ""}
+            onChange={(sshKey) => setInput({ ...input, sshKey })}
+            disabled={busy}
+            clearable
+          />
+          <p className="field-help">
+            Sin clave, el acceso SSH quedará bloqueado al aplicar este perfil.
+            HTTPS conserva su propio mecanismo de credenciales.
+          </p>
         </div>
 
         <div className="editor-section">
@@ -128,8 +131,8 @@ export function IdentityEditor({
             <span className="section-badge optional">Opcional</span>
           </div>
           <p className="field-help">
-            Firma criptográficamente tus commits (<code>user.signingkey</code> y{" "}
-            <code>commit.gpgsign = true</code>).
+            La clave de firma es independiente de la autenticación remota.
+            Puedes configurarla sin exigir firma en cada commit.
           </p>
           <div className="field-row">
             <label className="field field-format">
@@ -140,6 +143,7 @@ export function IdentityEditor({
                   setInput({
                     ...input,
                     signingFormat: e.currentTarget.value as "ssh" | "openpgp",
+                    signingKey: "",
                   })
                 }
                 disabled={busy}
@@ -148,24 +152,48 @@ export function IdentityEditor({
                 <option value="openpgp">OpenPGP (GPG)</option>
               </select>
             </label>
-            <label className="field field-key">
-              Clave de firma
-              <input
-                autoComplete="off"
-                spellCheck={false}
-                placeholder={
-                  input.signingFormat === "openpgp"
-                    ? "ID de clave o huella GPG"
-                    : "p. ej. ~/.ssh/id_ed25519_trabajo.pub"
-                }
+            {input.signingFormat === "openpgp" ? (
+              <label className="field field-key">
+                Clave de firma
+                <input
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={
+                    input.signingFormat === "openpgp"
+                      ? "ID de clave o huella GPG"
+                      : "p. ej. ~/.ssh/id_ed25519_trabajo.pub"
+                  }
+                  value={input.signingKey ?? ""}
+                  onChange={(e) =>
+                    setInput({ ...input, signingKey: e.currentTarget.value })
+                  }
+                  disabled={busy}
+                />
+              </label>
+            ) : (
+              <PathPicker
+                label="Clave de firma SSH"
                 value={input.signingKey ?? ""}
-                onChange={(e) =>
-                  setInput({ ...input, signingKey: e.currentTarget.value })
-                }
+                onChange={(signingKey) => setInput({ ...input, signingKey })}
                 disabled={busy}
+                clearable
               />
-            </label>
+            )}
           </div>
+          <label className="field-help">
+            <input
+              type="checkbox"
+              checked={Boolean(input.signingRequired)}
+              disabled={busy || !input.signingKey}
+              onChange={(event) =>
+                setInput({
+                  ...input,
+                  signingRequired: event.currentTarget.checked,
+                })
+              }
+            />{" "}
+            Exigir firma en los commits de este perfil
+          </label>
         </div>
 
         <div className="action-row">

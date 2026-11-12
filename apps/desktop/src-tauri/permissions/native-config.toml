@@ -1,9 +1,9 @@
 [[permission]]
 identifier = "allow-preview-native-config"
 description = "Simulate Git identity configuration without changing Git files"
-commands.allow = ["preview_native_config", "native_config_status", "native_activity", "setup_status", "preview_local_identity"]
+commands.allow = ["preview_native_config", "native_config_status", "native_activity", "setup_status", "preview_local_identity", "preview_profile_assignment"]
 
 [[permission]]
 identifier = "allow-confirm-native-config"
 description = "Apply or restore the reviewed Git configuration using its confirmation"
-commands.allow = ["confirm_native_config", "keep_repository_identity"]
+commands.allow = ["confirm_native_config", "keep_repository_identity", "confirm_profile_assignment"]

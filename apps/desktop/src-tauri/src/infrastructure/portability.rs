@@ -257,6 +257,7 @@ fn decode(contents: &str) -> Result<Archive, PortableError> {
             signing_key: None,
             signing_format: None,
             ssh_key: None,
+            signing_required: false,
         }
         .validate()
         .map_err(|_| PortableError::InvalidFile)?;

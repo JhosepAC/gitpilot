@@ -18,7 +18,7 @@ const GIT_TIME: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
-struct Profile {
+pub(super) struct Profile {
     id: i64,
     revision: i64,
     label: String,
@@ -27,6 +27,38 @@ struct Profile {
     signing_key: Option<String>,
     signing_format: Option<String>,
     ssh_key: Option<String>,
+    signing_required: bool,
+}
+
+impl Profile {
+    pub(super) async fn check_key_files(&self) -> Result<(), super::config_apply::ApplyError> {
+        for (key, inline) in self.ssh_key.iter().map(|key| (key, false)).chain(
+            self.signing_key
+                .iter()
+                .filter(|_| self.signing_format.as_deref().unwrap_or("ssh") == "ssh")
+                .map(|key| (key, true)),
+        ) {
+            if inline && (key.starts_with("key::") || key.starts_with("ssh-")) {
+                continue;
+            }
+            let path = if let Some(relative) =
+                key.strip_prefix("~/").or_else(|| key.strip_prefix("~\\"))
+            {
+                PathBuf::from(
+                    env::var_os("HOME")
+                        .or_else(|| env::var_os("USERPROFILE"))
+                        .ok_or(super::config_apply::ApplyError::KeyUnavailable)?,
+                )
+                .join(relative)
+            } else {
+                PathBuf::from(key)
+            };
+            if !path.is_absolute() || !fs::metadata(&path).await.is_ok_and(|meta| meta.is_file()) {
+                return Err(super::config_apply::ApplyError::KeyUnavailable);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -121,7 +153,7 @@ async fn snapshot(pool: &SqlitePool) -> Result<Policy, InventoryError> {
     .fetch_all(&mut *tx)
     .await?;
     let profiles: Vec<Profile> =
-        sqlx::query_as("SELECT id, revision, label, git_name, email, signing_key, signing_format, ssh_key FROM identities")
+        sqlx::query_as("SELECT id, revision, label, git_name, email, signing_key, signing_format, ssh_key, signing_required FROM identities")
             .fetch_all(&mut *tx)
             .await?;
     let default_id = sqlx::query_scalar("SELECT id FROM identities WHERE is_default = 1")
@@ -258,38 +290,59 @@ fn include(path: &str) -> String {
     format!("[include]\n\tpath = {}\n", quote(path))
 }
 
-fn profile_config(profile: &Profile) -> String {
-    let mut config = format!(
-        "[user]\n\tname = {}\n\temail = {}\n",
-        quote(&profile.git_name),
-        quote(&profile.email)
-    );
-    if let Some(signing_key) = &profile.signing_key {
-        let trimmed = signing_key.trim();
-        if !trimmed.is_empty() {
-            let format = profile.signing_format.as_deref().unwrap_or("ssh");
-            let key_val = if format == "ssh" {
-                trimmed.replace('\\', "/")
-            } else {
-                trimmed.to_string()
-            };
-            config.push_str(&format!("\tsigningkey = {}\n", quote(&key_val)));
-            config.push_str("[commit]\n\tgpgsign = true\n");
-            config.push_str(&format!("[gpg]\n\tformat = {}\n", quote(format)));
-        }
+pub(super) fn profile_config(profile: &Profile) -> String {
+    let format = profile.signing_format.as_deref().unwrap_or("ssh");
+    let key = profile.signing_key.as_deref().unwrap_or("");
+    let key = if format == "ssh" {
+        key.replace('\\', "/")
+    } else {
+        key.into()
+    };
+    let mut ssh = String::from("ssh -F none -o IdentitiesOnly=yes -o IdentityAgent=none -o IdentityFile=none -o CertificateFile=none -o PreferredAuthentications=publickey");
+    if let Some(key) = profile
+        .ssh_key
+        .as_deref()
+        .filter(|key| !key.trim().is_empty())
+    {
+        // IdentityFile is expanded by OpenSSH after parsing; unlike -i, it does
+        // not discard a literal-percent path during an early filesystem check.
+        let identity = format!(
+            "IdentityFile={}",
+            quote(&key.replace('\\', "/").replace('%', "%%"))
+        );
+        ssh.push_str(&format!(" -o '{}'", identity.replace('\'', "'\\''")));
+    } else {
+        ssh.push_str(" -o PubkeyAuthentication=no");
     }
-    if let Some(ssh_key) = &profile.ssh_key {
-        let trimmed = ssh_key.trim();
-        if !trimmed.is_empty() {
-            let formatted_key = trimmed.replace('\\', "/");
-            let cmd = format!(
-                "ssh -i '{}' -o IdentitiesOnly=yes",
-                formatted_key.replace('\'', "'\\''")
-            );
-            config.push_str(&format!("[core]\n\tsshCommand = {}\n", quote(&cmd)));
+    format!(
+        "[user]\n\tname = {}\n\temail = {}\n\tsigningkey = {}\n[commit]\n\tgpgsign = {}\n[tag]\n\tgpgsign = false\n[gpg]\n\tformat = {}\n\tprogram = gpg\n[gpg \"ssh\"]\n\tprogram = ssh-keygen\n\tdefaultKeyCommand =\n[gpg \"openpgp\"]\n\tprogram = gpg\n[core]\n\tsshCommand = {}\n[ssh]\n\tvariant = ssh\n",
+        quote(&profile.git_name), quote(&profile.email), quote(&key),
+        profile.signing_required && !key.is_empty(), quote(format), quote(&ssh)
+    )
+}
+
+pub(super) async fn expected_profile(
+    pool: &SqlitePool,
+    repo: &Repository,
+) -> Result<Profile, InventoryError> {
+    let id: Option<i64> = if let Some(id) = repo.identity_id {
+        Some(id)
+    } else {
+        let rules: Vec<(String, i64)> = sqlx::query_as("SELECT d.path, r.identity_id FROM directories d JOIN identity_rules r ON r.directory_id = d.id").fetch_all(pool).await?;
+        match rules
+            .into_iter()
+            .filter(|(path, _)| Path::new(&repo.path).starts_with(path))
+            .max_by_key(|(path, _)| Path::new(path).components().count())
+        {
+            Some((_, id)) => Some(id),
+            None => {
+                sqlx::query_scalar("SELECT id FROM identities WHERE is_default = 1")
+                    .fetch_optional(pool)
+                    .await?
+            }
         }
-    }
-    config
+    };
+    sqlx::query_as("SELECT id, revision, label, git_name, email, signing_key, signing_format, ssh_key, signing_required FROM identities WHERE id = ?").bind(id.ok_or(InventoryError::NotFound)?).fetch_one(pool).await.map_err(Into::into)
 }
 
 fn generated_files(rules: &[Rule]) -> BTreeMap<String, Vec<u8>> {
@@ -500,6 +553,18 @@ pub(crate) async fn prepare(
     };
     let policy = snapshot(pool).await?;
     plan_rules(&policy, &native, &mut preview);
+    let unavailable: Vec<_> = {
+        let mut paths = Vec::new();
+        for rule in &preview.rules {
+            if rule.profile.check_key_files().await.is_err() {
+                paths.push(rule.path.clone());
+            }
+        }
+        paths
+    };
+    for path in unavailable {
+        preview.warn("key_unavailable", Some(&path));
+    }
     if !compatible(&preview.git_version) {
         preview.warn("unsupported_git", None);
         return Ok(preview);
@@ -668,17 +733,25 @@ pub(crate) async fn prepare(
             .map(|(code, path)| Finding { code, path }),
     );
     if let Ok((parent, before)) = external {
-        if before.as_ref().is_some_and(|snapshot| {
+        let managed = before.as_ref().is_some_and(|snapshot| {
             snapshot
                 .bytes
                 .windows(MANAGED.len())
                 .any(|window| window == MANAGED.as_bytes())
-        }) {
+        });
+        let journal: Option<String> = sqlx::query_scalar("SELECT applied_stamp FROM config_operations WHERE target = ? AND state = 'applied' ORDER BY rowid DESC LIMIT 1").bind(files.destination.to_str()).fetch_optional(pool).await?.flatten();
+        let owned = journal
+            .as_deref()
+            .and_then(|value| serde_json::from_str::<native_file::Stamp>(value).ok())
+            .is_some_and(|stamp| before.as_ref().is_some_and(|file| file.stamp == stamp));
+        if managed && !owned {
             preview.warn("managed_config_present", None);
         } else if native_file::parent_id(&native).is_err() {
             preview.warn("unsafe_global", None);
-        } else if preview.findings.is_empty()
-            && !preview.comparisons.is_empty()
+        } else if preview
+            .findings
+            .iter()
+            .all(|finding| finding.code == "unverified_directory")
             && !preview
                 .comparisons
                 .iter()
@@ -771,6 +844,7 @@ mod tests {
             signing_key: None,
             signing_format: None,
             ssh_key: None,
+            signing_required: false,
         }
     }
 
@@ -785,6 +859,7 @@ mod tests {
             signing_key: Some("~/.ssh/id_ed25519_trabajo.pub".into()),
             signing_format: Some("ssh".into()),
             ssh_key: Some("~/.ssh/id_ed25519_trabajo".into()),
+            signing_required: true,
         };
         let cfg = profile_config(&p);
         assert!(cfg.contains(r#"name = "Ana Lopez""#));
@@ -793,9 +868,9 @@ mod tests {
         assert!(cfg.contains("gpgsign = true"));
         assert!(cfg.contains(r#"format = "ssh""#));
         assert!(cfg.contains(r#"[core]"#));
-        assert!(cfg.contains(
-            r#"sshCommand = "ssh -i '~/.ssh/id_ed25519_trabajo' -o IdentitiesOnly=yes""#
-        ));
+        assert!(cfg.contains("id_ed25519_trabajo"));
+        assert!(cfg.contains("IdentityFile="));
+        assert!(cfg.contains("IdentityAgent=none"));
     }
 
     async fn fixture_git(executable: &Path, cwd: &Path, global: &Path, args: &[&str]) {

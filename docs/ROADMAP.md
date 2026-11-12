@@ -85,3 +85,4 @@ GitPilot administra cuentas con fotos de perfil, renovación y desconexión loca
 | --- | --- | --- |
 | 8.1 | Candidato v1.0.0 | Logo compartido en la interfaz, licencia y atribución en los paquetes, canal privado de seguridad, documentación ES/EN y compilación desde un commit verificado de `main`. [Distribución](RELEASING.md) |
 | 8.2 | Firma y publicación | NSIS sin Authenticode, manifiesto SHA-256 firmado con OpenPGP, comprobación de los archivos del borrador y publicación con tag firmado tras la aprobación. [Firma y publicación](RELEASING.md#firmar-y-publicar) |
+| 8.3 | Aislamiento de perfiles | Selección nativa de carpetas y claves; aplicación local con prioridad sobre valores anteriores; SSH sin claves ajenas y firma independiente; reaplicación con respaldo y restauración por pasos. [Validaciones](testing/TESTING.md#evidencia-de-aislamiento-de-perfiles) |

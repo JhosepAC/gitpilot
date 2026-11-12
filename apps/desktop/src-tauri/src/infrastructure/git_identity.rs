@@ -62,6 +62,7 @@ fn parse_identity(output: &[u8]) -> Result<IdentityInput, IdentityError> {
         signing_key: None,
         signing_format: None,
         ssh_key: None,
+        signing_required: false,
     })
 }
 
