@@ -84,8 +84,9 @@ fn file_details(file: &File, directory: bool) -> io::Result<([u64; 2], u32, [u32
 fn file_details(file: &File, directory: bool) -> io::Result<([u64; 2], u32, [u32; 2])> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Storage::FileSystem::{
-        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_DIRECTORY,
-        FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_REPARSE_POINT,
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_COMPRESSED,
+        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_ENCRYPTED, FILE_ATTRIBUTE_READONLY,
+        FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_SPARSE_FILE,
     };
     let mut info = BY_HANDLE_FILE_INFORMATION::default();
     if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
@@ -94,12 +95,59 @@ fn file_details(file: &File, directory: bool) -> io::Result<([u64; 2], u32, [u32
     let attributes = info.dwFileAttributes;
     if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
         || (attributes & FILE_ATTRIBUTE_DIRECTORY != 0) != directory
-        || (!directory && (info.nNumberOfLinks != 1 || attributes & FILE_ATTRIBUTE_READONLY != 0))
+        || (!directory
+            && (info.nNumberOfLinks != 1
+                || attributes
+                    & (FILE_ATTRIBUTE_READONLY
+                        | FILE_ATTRIBUTE_COMPRESSED
+                        | FILE_ATTRIBUTE_ENCRYPTED
+                        | FILE_ATTRIBUTE_SPARSE_FILE)
+                    != 0))
     {
         return Err(unsafe_path());
     }
+    if !directory {
+        check_windows_streams(file)?;
+    }
     let index = (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow);
     Ok(([u64::from(info.dwVolumeSerialNumber), index], 0, [0, 0]))
+}
+
+#[cfg(windows)]
+fn check_windows_streams(file: &File) -> io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::{
+        Foundation::ERROR_HANDLE_EOF,
+        Storage::FileSystem::{FileStreamInfo, GetFileInformationByHandleEx, FILE_STREAM_INFO},
+    };
+    // Bound the query and reject extra streams rather than silently dropping metadata.
+    let mut buffer = [0u64; 8192];
+    if unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileStreamInfo,
+            buffer.as_mut_ptr().cast(),
+            std::mem::size_of_val(&buffer) as u32,
+        )
+    } == 0
+    {
+        let error = io::Error::last_os_error();
+        if error.raw_os_error() == Some(ERROR_HANDLE_EOF as i32) && file.metadata()?.len() == 0 {
+            return Ok(());
+        }
+        return Err(error);
+    }
+    let stream = unsafe { &*buffer.as_ptr().cast::<FILE_STREAM_INFO>() };
+    let default_name: Vec<u16> = "::$DATA".encode_utf16().collect();
+    if stream.NextEntryOffset != 0 || stream.StreamNameLength as usize != default_name.len() * 2 {
+        return Err(unsafe_path());
+    }
+    let name =
+        unsafe { std::slice::from_raw_parts(stream.StreamName.as_ptr(), default_name.len()) };
+    if name != default_name {
+        return Err(unsafe_path());
+    }
+    Ok(())
 }
 
 fn directory(path: &Path) -> io::Result<File> {
@@ -454,7 +502,10 @@ impl Drop for Stage {
 
 #[cfg(windows)]
 fn preserve_access(stage: &Path, target: &Path) -> io::Result<()> {
-    use std::{os::windows::io::AsRawHandle, ptr::null_mut};
+    use std::{
+        os::windows::{fs::MetadataExt, io::AsRawHandle},
+        ptr::null_mut,
+    };
     use windows_sys::Win32::{
         Foundation::LocalFree,
         Security::{
@@ -464,6 +515,7 @@ fn preserve_access(stage: &Path, target: &Path) -> io::Result<()> {
             PROTECTED_DACL_SECURITY_INFORMATION, SE_DACL_PROTECTED,
             UNPROTECTED_DACL_SECURITY_INFORMATION,
         },
+        Storage::FileSystem::SetFileAttributesW,
     };
     let original = options().read(true).open(target)?;
     file_details(&original, false)?;
@@ -506,8 +558,16 @@ fn preserve_access(stage: &Path, target: &Path) -> io::Result<()> {
         {
             return Err(io::Error::last_os_error());
         }
-        // ReplaceFileW preserves the target DACL but not necessarily its owner
-        // and primary group. Verify the full descriptor on the staged file first.
+        if unsafe {
+            SetFileAttributesW(
+                wide(stage.as_os_str()).as_ptr(),
+                original.metadata()?.file_attributes(),
+            )
+        } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        // Publish this verified descriptor without ReplaceFileW's inheritance merge.
         let staged = options().read(true).open(stage)?;
         file_details(&staged, false)?;
         if access_fingerprint(&staged)? != expected || access_fingerprint(&original)? != expected {
@@ -544,27 +604,29 @@ pub(super) fn replace(stage: &Path, target: &Path, existed: bool) -> io::Result<
     }
     #[cfg(windows)]
     {
+        if stage.parent() != target.parent() {
+            return Err(unsafe_path());
+        }
         if existed {
             preserve_access(stage, target)?;
         }
         use windows_sys::Win32::Storage::FileSystem::{
-            MoveFileExW, ReplaceFileW, MOVEFILE_WRITE_THROUGH,
+            MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
         };
-        let target = wide(target.as_os_str());
-        let stage = wide(stage.as_os_str());
-        let result = unsafe {
-            if existed {
-                ReplaceFileW(
-                    target.as_ptr(),
-                    stage.as_ptr(),
-                    std::ptr::null(),
-                    0,
-                    std::ptr::null(),
-                    std::ptr::null(),
-                )
+        // Staging is in the same directory; never allow cross-volume copy fallback.
+        // ReplaceFileW can duplicate legacy inherited ACEs on Windows Server.
+        let flags = MOVEFILE_WRITE_THROUGH
+            | if existed {
+                MOVEFILE_REPLACE_EXISTING
             } else {
-                MoveFileExW(stage.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH)
-            }
+                0
+            };
+        let result = unsafe {
+            MoveFileExW(
+                wide(stage.as_os_str()).as_ptr(),
+                wide(target.as_os_str()).as_ptr(),
+                flags,
+            )
         };
         if result == 0 {
             return Err(io::Error::last_os_error());
@@ -637,11 +699,32 @@ mod tests {
 
     #[test]
     fn replacement_preserves_explicit_windows_security_group() {
+        check_replacement(false);
+    }
+
+    #[test]
+    fn replacement_preserves_legacy_inherited_windows_acl() {
+        check_replacement(true);
+    }
+
+    #[test]
+    fn refuses_windows_configuration_with_alternate_streams() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("config");
+        fs::write(&target, b"original").unwrap();
+        let stream = directory.path().join("config:fixture");
+        fs::write(&stream, b"metadata").unwrap();
+        assert!(snapshot(&target).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert_eq!(fs::read(&stream).unwrap(), b"metadata");
+    }
+
+    fn check_replacement(legacy: bool) {
         use windows_sys::Win32::{
             Foundation::LocalFree,
             Security::{
                 Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW,
-                SetFileSecurityW, GROUP_SECURITY_INFORMATION,
+                SetFileSecurityW, DACL_SECURITY_INFORMATION, GROUP_SECURITY_INFORMATION,
             },
         };
         let directory = tempfile::tempdir().unwrap();
@@ -670,6 +753,34 @@ mod tests {
         let error = io::Error::last_os_error();
         unsafe { LocalFree(descriptor) };
         assert_ne!(changed, 0, "{error}");
+        if legacy {
+            let sddl = security_description(&target)
+                .trim_end_matches('\0')
+                .replace("D:AI", "D:");
+            let text = wide(std::ffi::OsStr::new(&sddl));
+            let mut descriptor = std::ptr::null_mut();
+            assert_ne!(
+                unsafe {
+                    ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                        text.as_ptr(),
+                        1,
+                        &mut descriptor,
+                        std::ptr::null_mut(),
+                    )
+                },
+                0
+            );
+            let result = unsafe {
+                SetFileSecurityW(
+                    wide(target.as_os_str()).as_ptr(),
+                    DACL_SECURITY_INFORMATION,
+                    descriptor,
+                )
+            };
+            unsafe { LocalFree(descriptor) };
+            assert_ne!(result, 0);
+            assert!(!security_description(&target).contains("D:AI"));
+        }
         let before = snapshot(&target).unwrap().unwrap().stamp;
         let description = security_description(&target);
         let mut stage = Stage::create(directory.path().join("stage"), Some(&before)).unwrap();

@@ -54,7 +54,8 @@ jobs:
         run: |
           cargo fmt --all -- --check
           cargo clippy --locked --features custom-protocol --all-targets -- -D warnings
-          cargo test --locked --features custom-protocol
+          # Bound concurrent Git/HTTP fixtures on the hosted Windows runner.
+          cargo test --locked --features custom-protocol -- --test-threads=2
 
   dependency-audit:
     runs-on: ubuntu-24.04

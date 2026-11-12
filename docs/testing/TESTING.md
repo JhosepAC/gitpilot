@@ -225,3 +225,7 @@ La prueba pasó localmente tanto con TEMP habitual como con TEMP/TMP apuntando a
 
 
 El diagnóstico posterior detectó un cambio real del descriptor de seguridad al reemplazar archivos en Windows. La regresión `replacement_preserves_explicit_windows_security_group` asigna un grupo explícito a un archivo temporal: falló antes de la corrección y pasó tras copiar y verificar propietario, grupo y ACL sobre el archivo de staging antes del reemplazo. La comprobación estricta de permisos permanece activa. Clippy y las 42 pruebas Rust habilitadas pasaron localmente; las cinco pruebas especiales ya tenían evidencia local de ejecución separada. CI del nuevo commit debe confirmar el resultado en el runner.
+
+### Herencia ACL de Windows Server durante el cierre 1.1.0
+
+CI detectó que ReplaceFileW duplicaba las ACE heredadas en ACL sin el indicador AI. El motor publica el staging verificado mediante MoveFileExW en el mismo directorio. Las pruebas `replacement_preserves_explicit_windows_security_group`, `replacement_preserves_legacy_inherited_windows_acl` y `refuses_windows_configuration_with_alternate_streams` verifican metadatos y rechazo seguro sin eliminar streams. El rechazo se extiende a archivos comprimidos, cifrados y sparse. La huella del journal conserva su formato anterior.
