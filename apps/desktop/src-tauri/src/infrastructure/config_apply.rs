@@ -63,21 +63,16 @@ pub(crate) struct OperationStatus {
     pub(super) confirmation: Option<String>,
 }
 
-const OPERATION: &str =
-    "SELECT rowid AS id, repository_id, is_hook, token, target, parent_id, before_stamp,
-    backup, candidate_hash, candidate_id, applied_stamp, recovery_id, state FROM config_operations";
-
 async fn live(
     pool: &SqlitePool,
     repository: Option<i64>,
     operation: Option<i64>,
     hook: bool,
 ) -> Result<Option<Operation>, ApplyError> {
-    Ok(sqlx::query_as(&format!(
-        "{OPERATION} WHERE state IN ('preparing', 'applied', 'restoring')
+    Ok(sqlx::query_as("SELECT rowid AS id, repository_id, is_hook, token, target, parent_id, before_stamp,
+    backup, candidate_hash, candidate_id, applied_stamp, recovery_id, state FROM config_operations WHERE state IN ('preparing', 'applied', 'restoring')
             AND ((? IS NULL AND repository_id IS ? AND is_hook = ?) OR rowid = ?)
-            ORDER BY rowid DESC LIMIT 1"
-    ))
+            ORDER BY rowid DESC LIMIT 1")
     .bind(operation)
     .bind(repository)
     .bind(hook)
@@ -184,11 +179,13 @@ impl Operation {
 async fn set_state(pool: &SqlitePool, token: &str, state: &str) -> Result<(), ApplyError> {
     let mut tx = pool.begin().await?;
     if matches!(state, "restored" | "rolled_back") {
-        let current: Operation = sqlx::query_as(&format!("{OPERATION} WHERE token = ?"))
+        let current: Operation = sqlx::query_as("SELECT rowid AS id, repository_id, is_hook, token, target, parent_id, before_stamp,
+    backup, candidate_hash, candidate_id, applied_stamp, recovery_id, state FROM config_operations WHERE token = ?")
             .bind(token)
             .fetch_one(&mut *tx)
             .await?;
-        let previous: Option<Operation> = sqlx::query_as(&format!("{OPERATION} WHERE target = ? AND state = 'applied' AND rowid < ? ORDER BY rowid DESC LIMIT 1")).bind(&current.target).bind(current.id).fetch_optional(&mut *tx).await?;
+        let previous: Option<Operation> = sqlx::query_as("SELECT rowid AS id, repository_id, is_hook, token, target, parent_id, before_stamp,
+    backup, candidate_hash, candidate_id, applied_stamp, recovery_id, state FROM config_operations WHERE target = ? AND state = 'applied' AND rowid < ? ORDER BY rowid DESC LIMIT 1").bind(&current.target).bind(current.id).fetch_optional(&mut *tx).await?;
         if let Some(previous) = previous {
             let restored = snapshot(Path::new(&current.target), current.parent()?)?
                 .ok_or(ApplyError::RecoveryRequired)?;
@@ -350,9 +347,8 @@ async fn recover(
 
 pub(crate) async fn reconcile(pool: &SqlitePool, app: &Path) -> Result<(), ApplyError> {
     let _application = lock(app)?;
-    let pending = sqlx::query_as::<_, Operation>(&format!(
-        "{OPERATION} WHERE state IN ('preparing', 'restoring')"
-    ))
+    let pending = sqlx::query_as::<_, Operation>("SELECT rowid AS id, repository_id, is_hook, token, target, parent_id, before_stamp,
+    backup, candidate_hash, candidate_id, applied_stamp, recovery_id, state FROM config_operations WHERE state IN ('preparing', 'restoring')")
     .fetch_all(pool)
     .await?;
     let mut outcome = Ok(());

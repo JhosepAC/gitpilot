@@ -35,7 +35,8 @@
     "licenseFile": "../../../LICENSE",
     "resources": {
       "../../../LICENSE": "LICENSE",
-      "../../../NOTICE": "NOTICE"
+      "../../../NOTICE": "NOTICE",
+      "../../../docs/legal/THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt"
     }
   }
 }

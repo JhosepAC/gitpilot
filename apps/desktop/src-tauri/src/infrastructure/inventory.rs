@@ -207,18 +207,12 @@ pub(crate) async fn assign(
     identity: Option<i64>,
 ) -> Result<(), InventoryError> {
     let mut tx = pool.begin().await?;
-    let (column, advance) = if repository {
-        (
-            "repository_id",
-            "UPDATE repositories SET revision = revision + 1 WHERE id = ? AND revision = ?
+    let advance = if repository {
+        "UPDATE repositories SET revision = revision + 1 WHERE id = ? AND revision = ?
              AND (? OR EXISTS (SELECT 1 FROM directory_repositories dr
-                       WHERE dr.repository_id = repositories.id AND dr.present = 1))",
-        )
+                       WHERE dr.repository_id = repositories.id AND dr.present = 1))"
     } else {
-        (
-            "directory_id",
-            "UPDATE directories SET revision = revision + 1 WHERE id = ? AND revision = ?",
-        )
+        "UPDATE directories SET revision = revision + 1 WHERE id = ? AND revision = ?"
     };
     let mut update = query(advance).bind(id).bind(revision);
     if repository {
@@ -228,20 +222,25 @@ pub(crate) async fn assign(
         return Err(InventoryError::Conflict);
     }
     if let Some(identity) = identity {
-        let statement = format!(
-            "INSERT INTO identity_rules ({column}, identity_id) VALUES (?, ?)
-             ON CONFLICT({column}) DO UPDATE SET identity_id = excluded.identity_id"
-        );
-        query(&statement)
+        let statement = if repository {
+            "INSERT INTO identity_rules (repository_id, identity_id) VALUES (?, ?) ON CONFLICT(repository_id) DO UPDATE SET identity_id = excluded.identity_id"
+        } else {
+            "INSERT INTO identity_rules (directory_id, identity_id) VALUES (?, ?) ON CONFLICT(directory_id) DO UPDATE SET identity_id = excluded.identity_id"
+        };
+        query(statement)
             .bind(id)
             .bind(identity)
             .execute(&mut *tx)
             .await?;
     } else {
-        query(&format!("DELETE FROM identity_rules WHERE {column} = ?"))
-            .bind(id)
-            .execute(&mut *tx)
-            .await?;
+        query(if repository {
+            "DELETE FROM identity_rules WHERE repository_id = ?"
+        } else {
+            "DELETE FROM identity_rules WHERE directory_id = ?"
+        })
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
         if repository {
             query("DELETE FROM directory_repositories WHERE repository_id = ? AND present = 0")
                 .bind(id)

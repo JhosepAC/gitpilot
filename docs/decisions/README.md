@@ -8,6 +8,7 @@ Los ADR iniciales registran la dirección de trabajo. Resolver las decisiones co
 | [002](ADR-002-git-nativo.md) | Git CLI e inclusiones acotadas a Git dirs ordinarios | Adoptado para Windows y Linux |
 | [003](ADR-003-recuperacion.md) | Locks de Git, respaldo cifrado y recuperación por journal | Adaptador inicial verificado en Windows y Linux |
 | [004](ADR-004-autenticacion.md) | GitHub App con Device Flow, permisos de lectura y secretos en el SO | Adoptado para fase 6, validación de cuentas pendiente |
+| [005](ADR-005-security-backports.md) | Backports revisados de SQLite, GLib y macros con auditoría e integridad | En validación para 1.1.0 |
 
 | Decisión pendiente | Momento y evidencia |
 | --- | --- |

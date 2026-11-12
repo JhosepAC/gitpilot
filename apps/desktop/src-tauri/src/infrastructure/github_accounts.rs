@@ -59,11 +59,6 @@ pub(crate) struct AccountStatus {
     cleanup_pending: bool,
 }
 
-const COLUMNS: &str =
-    "github_id, login, expires_at, verified_at, state, credential_ref, refresh_ref";
-const ORPHANS: &str = "SELECT reference FROM github_credentials WHERE NOT EXISTS (
-    SELECT 1 FROM github_accounts WHERE credential_ref = reference OR refresh_ref = reference)";
-
 pub(super) fn now() -> Result<i64, GithubError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -95,9 +90,7 @@ impl<'a> Accounts<'a> {
     }
 
     pub(super) async fn row(&self, id: i64) -> Result<Option<Account>, GithubError> {
-        Ok(sqlx::query_as(&format!(
-            "SELECT {COLUMNS} FROM github_accounts WHERE client_id = ? AND github_id = ?"
-        ))
+        Ok(sqlx::query_as("SELECT github_id, login, expires_at, verified_at, state, credential_ref, refresh_ref FROM github_accounts WHERE client_id = ? AND github_id = ?")
         .bind(CLIENT_ID)
         .bind(id)
         .fetch_optional(self.pool)
@@ -105,7 +98,8 @@ impl<'a> Accounts<'a> {
     }
 
     async fn reconcile(&self) -> Result<bool, GithubError> {
-        let references: Vec<String> = sqlx::query_scalar(&format!("{ORPHANS} LIMIT 8"))
+        let references: Vec<String> = sqlx::query_scalar("SELECT reference FROM github_credentials WHERE NOT EXISTS (
+    SELECT 1 FROM github_accounts WHERE credential_ref = reference OR refresh_ref = reference) LIMIT 8")
             .fetch_all(self.pool)
             .await?;
         for reference in references {
@@ -116,14 +110,17 @@ impl<'a> Accounts<'a> {
                     .await?;
             }
         }
-        Ok(sqlx::query_scalar(&format!("SELECT EXISTS({ORPHANS})"))
-            .fetch_one(self.pool)
-            .await?)
+        Ok(sqlx::query_scalar(
+            "SELECT EXISTS(SELECT reference FROM github_credentials WHERE NOT EXISTS (
+    SELECT 1 FROM github_accounts WHERE credential_ref = reference OR refresh_ref = reference))",
+        )
+        .fetch_one(self.pool)
+        .await?)
     }
 
     pub(super) async fn status(&self) -> Result<AccountStatus, GithubError> {
         let cleanup_pending = self.reconcile().await?;
-        let mut accounts: Vec<Account> = sqlx::query_as(&format!("SELECT {COLUMNS} FROM github_accounts WHERE client_id = ? ORDER BY lower(login), github_id"))
+        let mut accounts: Vec<Account> = sqlx::query_as("SELECT github_id, login, expires_at, verified_at, state, credential_ref, refresh_ref FROM github_accounts WHERE client_id = ? ORDER BY lower(login), github_id")
             .bind(CLIENT_ID).fetch_all(self.pool).await?;
         let time = now()?;
         for account in &mut accounts {

@@ -1,1 +1,2 @@
 apps/desktop/src-tauri/migrations/*.sql text eol=lf
+apps/desktop/src-tauri/vendor/** text=auto eol=lf

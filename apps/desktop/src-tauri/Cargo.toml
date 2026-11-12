@@ -21,7 +21,7 @@ sha2 = "0.10"
 getrandom = "0.4"
 reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 hex = "0.4"
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 tauri = { version = "2", features = [] }
 tempfile = "3"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "sync", "time"] }
@@ -33,7 +33,14 @@ tauri-plugin-dialog = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 aes-gcm = "0.10"
+glib = "=0.18.5"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_Security_Authorization", "Win32_Security_Cryptography", "Win32_Security_Credentials"] }
+
+[patch.crates-io]
+sqlx-sqlite = { path = "vendor/sqlx-sqlite-0.9.0" }
+glib = { path = "vendor/glib-0.18.5" }
+glib-macros = { path = "vendor/glib-macros-0.18.5" }
+gtk3-macros = { path = "vendor/gtk3-macros-0.18.2" }
