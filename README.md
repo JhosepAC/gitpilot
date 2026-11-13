@@ -68,9 +68,11 @@ cargo test --locked --features custom-protocol
 
 La compilación anterior genera un binario de desarrollo. Las reglas de contribución usan [trunk-based development](docs/ROADMAP.md#trunk-based-development). Los contextos locales de asistentes se excluyen del historial y CI comprueba que esas rutas no estén rastreadas.
 
-## Instaladores de v1.0.0
+## Instaladores de v1.1.0
 
-Desde `apps/desktop`, ejecuta `npm run tauri -- build --ci -- --locked` en cada plataforma. Windows genera un instalador NSIS por usuario. Debian 12 genera un paquete amd64 que declara Git y `libsecret-tools` como dependencias. En Debian, instálalo con `sudo apt install ./GitPilot_1.0.0_amd64.deb` desde la carpeta que contiene el archivo. [Compatibilidad, verificación y actualización](docs/RELEASING.md)
+La [versión oficial 1.1.0](https://github.com/JhosepAC/gitpilot/releases/tag/v1.1.0) incluye [Windows x64](https://github.com/JhosepAC/gitpilot/releases/download/v1.1.0/GitPilot_1.1.0_x64-setup.exe) y [Debian 12 amd64](https://github.com/JhosepAC/gitpilot/releases/download/v1.1.0/GitPilot_1.1.0_amd64.deb). Verifica el manifiesto OpenPGP y las sumas antes de instalar. Windows se distribuye sin Authenticode.
+
+Desde `apps/desktop`, ejecuta `npm run tauri -- build --ci -- --locked` en cada plataforma. Windows genera un instalador NSIS por usuario. Debian 12 genera un paquete amd64 que declara Git y `libsecret-tools` como dependencias. En Debian, instálalo con `sudo apt install ./GitPilot_1.1.0_amd64.deb` desde la carpeta que contiene el archivo. [Compatibilidad, verificación y actualización](docs/RELEASING.md)
 
 ## Licencia y contribuciones
 

@@ -12,6 +12,8 @@ GitPilot is a local-first desktop app for managing Git identities on Windows and
 
 ## Install and verify
 
+The [official 1.1.0 release](https://github.com/JhosepAC/gitpilot/releases/tag/v1.1.0) provides [Windows x64](https://github.com/JhosepAC/gitpilot/releases/download/v1.1.0/GitPilot_1.1.0_x64-setup.exe) and [Debian 12 amd64](https://github.com/JhosepAC/gitpilot/releases/download/v1.1.0/GitPilot_1.1.0_amd64.deb). Verify the OpenPGP manifest and checksums before installing. The Windows installer does not include Authenticode signing.
+
 GitPilot supports Windows x64 with WebView2 and Linux amd64 with WebKitGTK 4.1. Use Git 2.39.5 or later. The Debian package is built on Debian 12 and declares Git and `libsecret-tools` as dependencies. Credential and encrypted backup features on Linux need an available Secret Service. [Installation, verification, and recovery](docs/RELEASING.md)
 
 ## Develop
