@@ -1,6 +1,6 @@
 # Plan de cierre y publicación de GitPilot 1.1.0
 
-Fecha de inicio: 2026-11-12. Estado: **correcciones implementadas; cierre de distribución en curso**.
+Fecha de inicio: 2026-11-12. Estado: **publicación y controles de distribución completados; límites de cobertura T08–T09 registrados**.
 
 Objetivo: resolver las alertas pendientes, validar los cambios y distribuir instaladores de Windows x64 y Debian 12 amd64 desde un mismo commit verificado de `main`.
 
@@ -119,8 +119,8 @@ T02–T05 pueden investigarse en paralelo, coordinando cualquier cambio del mism
 
 ### T07 · Validación técnica desde una instalación limpia
 
-- [ ] Completar T07 en Windows x64.
-- [ ] Completar T07 en Debian 12 amd64.
+- [x] Completar T07 en Windows x64.
+- [ ] Completar T07 en Debian 12 amd64. **Omitida por el responsable; no es una prueba aprobada.**
 
 **Acciones:** desde un checkout limpio del SHA a validar, ejecutar los comandos de Desktop CI: `npm ci`, formato, lint, tipos, Vitest, compilación Tauri, `cargo fmt --all -- --check`, Clippy con `--locked --features custom-protocol --all-targets -- -D warnings` y pruebas con `--locked --features custom-protocol`. Usar el toolchain declarado. Revalidar alineación de versiones en Tauri, npm, Cargo y lockfiles.
 
@@ -130,8 +130,8 @@ T02–T05 pueden investigarse en paralelo, coordinando cualquier cambio del mism
 
 ### T08 · Regresión de perfiles, Git, claves y recuperación
 
-- [ ] Completar T08 en Windows.
-- [ ] Completar T08 en Linux.
+- [ ] Completar T08 en Windows. **Configuración, autor y recuperación verificados; las firmas SSH/OpenPGP y el acceso remoto real conservan su evidencia Linux previa, sin atribuirla a Windows.**
+- [ ] Completar T08 en Linux. **Ampliación omitida; evidencia previa conservada.**
 
 **Escenarios obligatorios:**
 
@@ -149,8 +149,8 @@ T02–T05 pueden investigarse en paralelo, coordinando cualquier cambio del mism
 
 ### T09 · Revisión visual, interacción y accesibilidad
 
-- [ ] Completar T09 en WebView2/Windows.
-- [ ] Completar T09 en WebKitGTK/Linux.
+- [ ] Completar T09 en WebView2/Windows. **Revisión realizada con los límites registrados abajo; no acredita selección efectiva de archivo ni auditoría WCAG completa.**
+- [ ] Completar T09 en WebKitGTK/Linux. **Omitida por el responsable.**
 
 **Acciones:** revisar la ventana de 900 × 600, reflujo con zoom/ancho estrecho, navegación por teclado, foco, contraste y movimiento reducido. Comprobar menú vertical con iconos, nombres largos y directorios homónimos con ruta consultable. En asignaciones probar carga, error/reintento, vacío, predeterminado, múltiples raíces, deduplicación y repositorio ausente. Probar seleccionar/cancelar archivos y carpetas, cambiar de perfil y gestionar asignaciones desde Directorios.
 
@@ -162,17 +162,17 @@ T02–T05 pueden investigarse en paralelo, coordinando cualquier cambio del mism
 
 ### T10 · Integrar, revisar documentación y congelar el SHA
 
-- [ ] Completar T10. Depende de T06–T09.
+- [x] Completar T10. Depende de T06–T09.
 
 **Acciones:** integrar los commits revisados en `main`; comprobar árbol limpio, archivos permitidos y versiones coherentes. Actualizar CHANGELOG, notas `v1.1.0.md`, revisión de seguridad y pruebas. Retirar el estado de bloqueo solo si la evidencia lo permite. Tras la autorización de push, subir `main` y esperar Desktop CI aprobada para ese SHA exacto.
 
-**Aceptación:** SHA final registrado, documentación fiel al resultado y CI aprobada en Windows/Linux con auditorías. Ninguna prueba pendiente se presenta como ejecutada.
+**Aceptación:** SHA final registrado, documentación fiel al resultado y CI aprobada en Windows con auditorías del lockfile completo. Las nuevas pruebas Linux están omitidas según el ajuste de alcance. Ninguna prueba pendiente se presenta como ejecutada.
 
 **Evidencia:** SHA, commits, revisión y enlace a CI.
 
 ### T11 · Construir y verificar los candidatos definitivos
 
-- [ ] Completar T11. Depende de T10.
+- [x] Completar T11. Depende de T10.
 
 **Acciones:** ejecutar Release candidate desde `main`; descargar `gitpilot-1.1.0-candidate`. Verificar versión y commit de BUILD-INFO, NSIS, Debian, LICENSE, NOTICE y SHA256SUMS. Mantener separados los candidatos locales anteriores, que no deben adjuntarse por error a la release.
 
@@ -182,11 +182,12 @@ T02–T05 pueden investigarse en paralelo, coordinando cualquier cambio del mism
 
 ### T12 · Instalación, actualización y recuperación con los paquetes reales
 
-- [ ] Instalación limpia de NSIS en Windows.
-- [ ] Actualización Windows desde 1.0.0 con datos sintéticos.
-- [ ] Instalación limpia de Debian en un entorno aislado.
-- [ ] Actualización Debian desde 1.0.0 con datos sintéticos.
-- [ ] Reapertura, reinstalación y desinstalación verificadas en ambos sistemas.
+- [x] Instalación limpia de NSIS en Windows.
+- [x] Actualización Windows desde 1.0.0 con datos sintéticos.
+- [ ] Instalación limpia de Debian en un entorno aislado. **Omitida por el responsable.**
+- [ ] Actualización Debian desde 1.0.0 con datos sintéticos. **Omitida por el responsable.**
+- [x] Reapertura, reinstalación y desinstalación verificadas en Windows.
+- [ ] Reapertura, reinstalación y desinstalación en Debian. **Omitidas por el responsable.**
 
 **Acciones:** conservar una copia aislada de datos 1.0.0 y su configuración Git antes de actualizar. Comprobar perfiles, asignaciones, preferencias, historial, migraciones y credenciales de prueba. Verificar conservación de la firma obligatoria de perfiles anteriores, edición de claves y reaplicación confirmada. La instalación por sí sola no debe alterar Git. Comprobar permisos, avisos legales y dependencias del sistema. Documentar recuperación ante fallo de migración; no prometer downgrade sobre una base migrada sin validarlo.
 
@@ -196,7 +197,7 @@ T02–T05 pueden investigarse en paralelo, coordinando cualquier cambio del mism
 
 ### T13 · Firmar y revisar un borrador de release
 
-- [ ] Completar T13. Depende de T12.
+- [x] Completar T13. Depende de T12.
 
 **Acciones:** seguir [RELEASING.md](../RELEASING.md). El mantenedor firma el manifiesto con su clave OpenPGP de distribución y exporta únicamente la clave pública. Crear el borrador contra el SHA aprobado, adjuntar paquetes, avisos, procedencia, manifiesto, firma y clave pública. Descargar los adjuntos del borrador y verificar huella, firma y sumas. Anunciar que Windows no lleva Authenticode, salvo que se implemente y valide esa firma antes del manifiesto final.
 
@@ -206,9 +207,9 @@ T02–T05 pueden investigarse en paralelo, coordinando cualquier cambio del mism
 
 ### T14 · Aprobación y publicación oficial
 
-- [ ] Obtener aprobación final del responsable.
-- [ ] Crear y subir el tag firmado `v1.1.0` al SHA aprobado.
-- [ ] Comprobar destino/firma del tag y publicar el borrador.
+- [x] Obtener aprobación final del responsable.
+- [x] Crear y subir el tag firmado `v1.1.0` al SHA aprobado.
+- [x] Comprobar destino/firma del tag y publicar el borrador.
 
 **Aceptación:** todos los bloqueos anteriores cerrados; tag, BUILD-INFO, CI y paquetes identifican el mismo commit; la release pública contiene los archivos verificados. Si algo no coincide, detener la publicación y reconstruir lo necesario.
 
@@ -216,11 +217,11 @@ T02–T05 pueden investigarse en paralelo, coordinando cualquier cambio del mism
 
 ### T15 · Comprobación posterior y cierre
 
-- [ ] Descargar los archivos desde la release pública y verificar firma y SHA-256.
-- [ ] Realizar una comprobación de instalación/apertura con el paquete público en un entorno aislado.
-- [ ] Revisar enlaces, notas y requisitos publicados; comprobar que apuntan a 1.1.0.
-- [ ] Actualizar ROADMAP, TESTING y la revisión de seguridad con el cierre real.
-- [ ] Registrar incidencias restantes y seguimiento de excepciones aprobadas con responsable y fecha.
+- [x] Descargar los archivos desde la release pública y verificar firma y SHA-256.
+- [x] Realizar una comprobación de instalación/apertura con el paquete público en un entorno aislado.
+- [x] Revisar enlaces, notas y requisitos publicados; comprobar que apuntan a 1.1.0.
+- [x] Actualizar ROADMAP, TESTING y la revisión de seguridad con el cierre real.
+- [x] Registrar incidencias restantes y seguimiento de excepciones aprobadas con responsable y fecha.
 
 **Aceptación:** descarga pública utilizable y verificable; plan cerrado con evidencia. Ante un fallo de seguridad o actualización, registrar el incidente, avisar al responsable y decidir retirada o versión correctiva; no reemplazar silenciosamente un paquete publicado.
 
@@ -230,9 +231,32 @@ Agregar una fila al avanzar o bloquear cada tarea. Guardar logs voluminosos como
 
 | Tarea | Estado | Responsable | Fecha | SHA / sistema | Evidencia | Bloqueo / siguiente acción |
 | --- | --- | --- | --- | --- | --- | --- |
-| T01–T06 | Verificada localmente | Codex | 2026-11-12 | Rama fix/release-1.1.0-security | REVIEW_1_1_0.md y ADR-005 | Confirmar CI remoto al integrar |
-| T07–T08 | Validación local realizada | Codex | 2026-11-12 | Windows y Linux aislado | REVIEW_1_1_0.md | CI del SHA final pendiente |
+| T01–T06 | Verificada | Codex | 2026-11-12 | e2bc12a / Windows y lockfile completo | CI 43331051369; REVIEW_1_1_0.md y ADR-005 | Mantener revisión de backports |
+| T07–T08 | CI Windows verificada; límites T08 registrados | Codex | 2026-11-12 | e2bc12a / Windows; evidencia Linux previa | CI 43331051369 y REVIEW_1_1_0.md | No atribuir firmas/remoto reales a Windows |
 | T09 | Parcial; Linux omitido | Responsable / Codex | 2026-11-12 | WebView2 QA | REVIEW_1_1_0.md | Conservar límites observados |
-| T10–T15 | En curso | Codex | 2026-11-12 | Pendiente de SHA final | RELEASING.md | Compilar, verificar y publicar si procede |
+| T10–T15 | Distribución verificada | Responsable / Codex | 2026-11-12 | e2bc12a / tag v1.1.0 | Candidato 43332119582 y comprobación pública 43334934682 | Release publicada; conservar límites T08–T09 |
 
 Estados: Pendiente, En curso, Bloqueada, Verificada. Una tarea termina en Verificada, no solo con un commit.
+
+## Candidato definitivo y publicación
+
+El SHA congelado del producto es `e2bc12aaf124650812aeee504f04465af3183925`. [Desktop CI](https://github.com/JhosepAC/gitpilot/actions/runs/43331051369) aprobó formato, lint, tipos, cuatro pruebas frontend, compilación, Clippy, 44 pruebas Rust habilitadas y auditorías. Las cinco pruebas especiales conservan su ejecución local separada. Gitleaks revisó 85 commits hasta este SHA sin detectar secretos. [Release candidate](https://github.com/JhosepAC/gitpilot/actions/runs/43332119582) compiló NSIS y Debian desde ese mismo commit y aprobó instalación limpia, actualización desde 1.0.0, migración, integridad, conservación de perfiles/directorios/reglas, reapertura, reinstalación, desinstalación y ausencia de cambios Git no consentidos en Windows.
+
+Se verificaron las seis entradas de SHA256SUMS y BUILD-INFO al descargar el candidato, los ocho adjuntos iniciales del borrador y los nueve archivos definitivos de la [release pública](https://github.com/JhosepAC/gitpilot/releases/tag/v1.1.0). La firma añadida al borrador también se descargó y verificó antes de publicar. Los commits posteriores que solo registran esta evidencia no cambian el SHA de los paquetes ni requieren reconstruirlos.
+
+T08 distingue la verificación Windows de configuración efectiva/autor/recuperación de las pruebas reales de remoto SSH y firmas realizadas previamente en Linux. T09 Windows verificó navegación vertical, directorios homónimos, rutas largas, tres reglas deduplicadas, predeterminado, carga, vacío, repositorio ausente, error y reintento recuperado, foco, navegación con Enter y reflujo 100–200%. El selector nativo de clave se abrió y canceló; la selección efectiva de un archivo no quedó acreditada por una limitación de control de la ventana modal. No se atribuye una certificación WCAG ni cobertura exhaustiva a esta revisión. Estas comprobaciones pendientes permanecen visibles, sin confundirlas con fallos de producto encontrados.
+
+El mantenedor desbloqueó localmente la clave OpenPGP y se firmó el manifiesto con `47B10C26AF8BC9615DE39C5813EF6F27474B5E0F`. Se verificaron firma y sumas del borrador; el tag SSH firmado `v1.1.0` se comprobó localmente y en el remoto sobre el SHA congelado. La [release](https://github.com/JhosepAC/gitpilot/releases/tag/v1.1.0) se publicó como última versión el 2026-11-12 a las 19:09 America/Bogota (2026-11-13 00:09 UTC), con nueve adjuntos. Su descarga pública, firma, clave y sumas se volvieron a comprobar. [La prueba de instalación del paquete público](https://github.com/JhosepAC/gitpilot/actions/runs/43334934682) pasó: autenticó los nueve adjuntos, comprobó la procedencia frente al tag y repitió instalación, actualización, migración, reapertura, reinstalación y desinstalación en Windows desechable. La autorización condicional del responsable y su intervención de desbloqueo quedaron cumplidas, sin cambiar la clave de distribución.
+
+| Tarea | Estado actualizado | Evidencia / siguiente acción |
+| --- | --- | --- |
+| T01–T07 | Auditorías y CI Windows verificadas | CI 43331051369; T07 Linux omitida |
+| T08–T09 | Cobertura y límites registrados | TESTING.md y revisión de seguridad; no marcar casos no ejecutados |
+| T10–T12 | SHA y candidato verificados; instalación Windows aprobada | Candidato 43332119582; instalación Debian omitida |
+| T13 | Verificada | Nueve adjuntos, firma y bytes del borrador comprobados |
+| T14 | Verificada | Tag SSH firmado y release pública sobre e2bc12a |
+| T15 | Verificada | Descarga autenticada e instalación pública aprobadas: Actions 43334934682 |
+
+## Seguimiento de límites y mantenimiento
+
+Registro del 2026-11-12, responsable: mantenedor de GitPilot. Los backports deben revisarse y retirarse cuando upstream permita hacerlo, antes del 2026-12-12 o de la próxima versión, lo que ocurra primero (ADR-005). T08–T09 conservan explícitos los límites de comprobación Windows y los casos manuales no acreditados; ampliar esa cobertura en la próxima revisión de escritorio sin presentar la evidencia Linux como Windows. La omisión de nuevas pruebas Linux es una decisión del responsable de esta entrega. No quedan vulnerabilidades conocidas sin tratar en las auditorías registradas; no se promete ausencia absoluta de vulnerabilidades. Windows conserva la limitación de distribución sin Authenticode, con manifiesto OpenPGP verificado.

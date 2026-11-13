@@ -1,6 +1,6 @@
 # Revisión de seguridad del candidato 1.1.0
 
-Fecha: 2026-11-12. Estado: **bloqueos de dependencias corregidos; distribución pendiente de CI y verificación final**.
+Fecha: 2026-11-12. Estado: **versión publicada con manifiesto/tag firmados e instalación pública Windows verificada**.
 
 ## Correcciones
 
@@ -20,7 +20,7 @@ El [ADR-005](../decisions/ADR-005-security-backports.md) registra origen, licenc
 
 La base RustSec comprobada es `af7b3ec33460b8e2de8d422e16d628518891a519` (2026-11-12), 1490 avisos. Sin hallazgos pendientes en la auditoría completa de los backports. Se comprobó que revertir la corrección de GLib o ejecutar el verificador con assertions desactivadas produce un fallo.
 
-Gitleaks 8.30.1, obtenido de su release oficial y comprobado con SHA-256, analizó 73 commits y las fuentes vendorizadas sin detectar secretos. Actionlint 1.7.12 validó los workflows. Estos análisis no garantizan ausencia absoluta de vulnerabilidades.
+Gitleaks 8.30.1, obtenido de su release oficial y comprobado con SHA-256, analizó 85 commits hasta e2bc12a y las fuentes vendorizadas sin detectar secretos. Actionlint 1.7.12 validó los workflows. Estos análisis no garantizan ausencia absoluta de vulnerabilidades.
 
 ## Validaciones realizadas y límites
 
@@ -41,6 +41,12 @@ CI identificó dos cambios de metadatos: propietario/grupo del staging y duplica
 
 El motor copia propietario, grupo, DACL, protección de herencia y atributos al staging, verifica su huella y lo publica mediante MoveFileExW en el mismo directorio, sin fallback de copia entre volúmenes. Se mantienen la comprobación posterior y la recuperación por journal. No se cambia el algoritmo de huellas, para conservar compatibilidad con operaciones ya registradas. Archivos comprimidos, cifrados, sparse o con streams adicionales se rechazan antes de escribir, evitando perder metadatos que esta ruta no puede conservar. Creación y última modificación no forman parte del contrato de recuperación.
 
-Las pruebas cubren grupo explícito, DACL heredada sin indicador AI y rechazo de streams alternativos sin modificar sus bytes. Las fixtures Git/HTTP de CI se limitan a dos hilos para evitar agotar sus presupuestos en el runner compartido. Pendiente de confirmar CI del SHA corregido.
+Las pruebas cubren grupo explícito, DACL heredada sin indicador AI y rechazo de streams alternativos sin modificar sus bytes. Las fixtures Git/HTTP de CI se limitan a dos hilos para evitar agotar sus presupuestos en el runner compartido. CI del SHA e2bc12a confirmó las 44 pruebas habilitadas y la auditoría; el candidato también aprobó instalación y actualización Windows.
 
 Referencias: [ReplaceFileW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew), [MoveFileExW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw), [seguridad al renombrar archivos](https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights).
+
+## Evidencia del candidato definitivo
+
+SHA del producto: `e2bc12aaf124650812aeee504f04465af3183925`. [CI aprobada](https://github.com/JhosepAC/gitpilot/actions/runs/43331051369) y [candidato verificado](https://github.com/JhosepAC/gitpilot/actions/runs/43332119582). Las sumas de ambos paquetes, avisos legales y procedencia coinciden también con los adjuntos descargados del borrador. La instalación Windows desde los paquetes reales y actualización desde 1.0.0 pasaron sin alterar Git y conservaron los datos sintéticos. El mantenedor desbloqueó su clave localmente; el manifiesto firmado y el tag SSH sobre e2bc12a se verificaron antes de publicar [v1.1.0](https://github.com/JhosepAC/gitpilot/releases/tag/v1.1.0). Los nueve archivos públicos volvieron a comprobarse, incluida la firma y las seis sumas. La [prueba de instalación pública](https://github.com/JhosepAC/gitpilot/actions/runs/43334934682) pasó, incluyendo autenticación de la descarga, instalación limpia y actualización desde 1.0.0.
+
+La revisión adicional WebView2 comprobó carga, vacío, error/reintento, repositorio ausente, foco y zoom 100–200%. El selector de claves se abrió/canceló; seleccionar un archivo no quedó acreditado por el control de la ventana modal. Las firmas y remoto SSH reales conservan evidencia Linux previa; no se atribuyen a Windows. Las validaciones adicionales Linux siguen omitidas por instrucción del responsable. Revisar los backports antes del 2026-12-12 o en la siguiente versión, lo que ocurra primero.
